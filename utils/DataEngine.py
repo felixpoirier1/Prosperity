@@ -1,9 +1,6 @@
 import pandas as pd
 import os
 import re
-import logging
-
-logging.basicConfig(level=logging.INFO)
 
 
 class DataEngine:
@@ -11,7 +8,6 @@ class DataEngine:
         self.data = {}
         i=0
         for folder in sorted(os.listdir(base_path)):
-            logging.debug(f'Searching {folder}')
             if folder == '.DS_Store':
                 continue
             i+=1
@@ -20,7 +16,6 @@ class DataEngine:
             trade_df = pd.DataFrame()
             for file in os.listdir(folder_path):
                 file_path = os.path.join(folder_path, file)
-                logging.debug(f'\tLoading {file_path}')
                 df = pd.read_csv(file_path, delimiter=';')
                 if re.search('price', file):
                     price_df = pd.concat([price_df, df])
@@ -45,9 +40,3 @@ class DataEngine:
         df['timestamp'] = df['timestamp'] + 1_000_000 * (df['day'] + 2)
 
         return df
-
-if __name__ == '__main__':
-    base_path = 'data2023'
-    de = DataEngine(base_path)
-    print(de.data['round_3']['price_df'].head())
-
