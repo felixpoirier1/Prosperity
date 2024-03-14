@@ -5,11 +5,11 @@
 2. In the `imc-prosperity-visualizer` directory run :
 
 ```bash
-npm install --force
+npm install
 npm run dev
 ```
 
-3. Open browser at http://localhost:5173/imc-prosperity-visualizer/
+3. Open browser at http://localhost:5173/imc-prosperity-2-visualizer/
 
 
 ### HOWTO: Run the visualizer via SSH (for Felix)
