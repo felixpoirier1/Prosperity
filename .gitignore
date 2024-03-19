@@ -161,4 +161,4 @@ cython_debug/
 
 /prosperityenv
 
-.DS_Store
+.DS_Store.gitignore
