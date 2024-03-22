@@ -93,6 +93,7 @@ class Trader:
         trader_data = ""
 
         # TODO: Add logic
+        
 
         logger.flush(state, orders, conversions, trader_data)
         return orders, conversions, trader_data
