@@ -87,6 +87,9 @@ class Logger:
 logger = Logger()
 
 class Trader:
+
+    POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         orders = {}
         conversions = 0
