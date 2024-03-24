@@ -40,3 +40,12 @@ class DataEngine:
         df['timestamp'] = df['timestamp'] + 1_000_000 * (df['day'] + 2)
 
         return df
+    
+class LogInterpreter:
+    def __init__(self, log_path):
+        self.logs = pd.read_json(log_path)
+        self.logs.columns = ['state', 'orders', 'conversions', 'trader_data', 'logs']
+        self.logs['state'] = self.logs['state'].apply(pd.Series)
+        self.logs['orders'] = self.logs['orders'].apply(pd.Series)
+        self.logs['state'] = self.logs['state'].apply(self._clean_state)
+        self.logs['orders'] = self.logs['orders'].apply(self._clean_orders)
