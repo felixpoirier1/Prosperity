@@ -90,13 +90,11 @@ class Trader:
 
     CURR_POSITION = {'STARFRUIT':0, 'AMETHYSTS':0}
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    order_depth: OrderDepth = OrderDepth()
 
-    def calc_amethysts_orders(self):
+    def calc_amethysts_orders(self, order_depth):
         product = 'AMETHYSTS'
         mid_price = 10_000
         orders = []
-        order_depth = self.order_depth[product]
 
         if len(order_depth.sell_orders) != 0:
             best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
@@ -112,7 +110,7 @@ class Trader:
 
         return orders
 
-    def calc_starfruit_orders(self):
+    def calc_starfruit_orders(self, order_depth):
         return []
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
@@ -122,13 +120,12 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        self.order_depth = state.order_depths
-
         for product in state.order_depths:
+            order_depth = state.order_depths[product]
             if product == 'AMETHYSTS':
-                result[product] = self.calc_amethysts_orders()
+                result[product] = self.calc_amethysts_orders(order_depth)
             elif product == 'STARFRUIT':
-                result[product] = self.calc_starfruit_orders()
+                result[product] = self.calc_starfruit_orders(order_depth)
         
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
