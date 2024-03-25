@@ -1,7 +1,6 @@
 import json
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
-from typing import Any
-import numpy as np
+from typing import Any, List
 
 class Logger:
     def __init__(self) -> None:
@@ -88,12 +87,50 @@ class Logger:
 logger = Logger()
 
 class Trader:
+
+    CURR_POSITION = {'STARFRUIT':0, 'AMETHYSTS':0}
+    POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
+    order_depth: OrderDepth = OrderDepth()
+
+    def calc_amethysts_orders(self):
+        product = 'AMETHYSTS'
+        mid_price = 10_000
+        orders = []
+        order_depth = self.order_depth[product]
+        best_ask, best_bid = None, None
+        if len(order_depth.sell_orders) != 0:
+            best_ask, best_ask_amount = list(order_depth.sell_orders.items())[0]
+            # liquidity take if the ask is below historic mid_price
+            if int(best_ask) <= mid_price:
+                orders.append(Order(product, best_ask, -best_ask_amount))
+
+        if len(order_depth.buy_orders) != 0:
+            best_bid, best_bid_amount = list(order_depth.buy_orders.items())[0]
+            # liquidity take if the bid is above historic mid_price
+            if int(best_bid) >= mid_price:
+                orders.append(Order(product, best_bid, -best_bid_amount))
+        
+
+
+        return orders
+
+    def calc_starfruit_orders(self):
+        return []
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        orders = {}
-        conversions = 0
+        result = {}
+
+        # To be changed later
+        conversions = 1
         trader_data = ""
-        # TODO: Add logic
 
+        self.order_depth = state.order_depths
 
-        logger.flush(state, orders, conversions, trader_data)
-        return orders, conversions, trader_data
+        for product in state.order_depths:
+            if product == 'AMETHYSTS':
+                result[product] = self.calc_amethysts_orders()
+            elif product == 'STARFRUIT':
+                result[product] = self.calc_starfruit_orders()
+        
+        logger.flush(state, result, conversions, trader_data)
+        return result, conversions, trader_data
