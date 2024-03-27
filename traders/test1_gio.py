@@ -5,6 +5,7 @@ import collections
 from collections import defaultdict
 import numpy as np
 import copy
+import operator
 
 
 class Logger:
@@ -110,82 +111,92 @@ class Trader:
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
     starfruit_dim = 4
 
-    def compute_orders_amethysts_2(self):
-        pass
-
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
         best_buy_pr = sorted(order_depth.buy_orders.items())[0][0]
 
         return best_sell_pr, best_buy_pr
 
+    def get_price_condition(self, is_sell, price, acc_price, product, comp_op):
+        first_val = comp_op(price, acc_price)
+        if is_sell:
+            if product == 'STARFRUIT':
+                acc_price += 1
+            return (first_val or ((self.position[product]<0) and (price == acc_price))) 
+        else:
+           if product == 'STARFRUIT':
+                price += 1
+           return (first_val or ((self.position[product]>0) and (price == acc_price))) 
+
+    def liquity_taking(self, orders_dict, acc_price, is_sell, product, comp_op):
+        cpos = self.position[product]
+        pos_limit = self.POSITION_LIMIT[product]
+        orders = []
+
+        for price, vol in orders_dict.items():
+            price_condition = self.get_price_condition(is_sell, price, acc_price, product, comp_op)
+            position_condition = cpos < pos_limit if is_sell else cpos > -pos_limit
+            if price_condition and position_condition:
+                order_for = min(-vol, pos_limit-cpos) if is_sell else max(-vol, -pos_limit-cpos)
+                cpos += order_for
+                assert(order_for >=0 if is_sell else order_for <= 0)
+                orders.append(Order(product, price, order_for))
+
+        return orders, cpos
+
     def compute_orders_amethysts(self, product, order_depth, acc_bid, acc_ask):
         orders: list[Order] = []
+        pos_lim = self.POSITION_LIMIT[product]
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
-                             
-        cpos = self.position[product]
-
-        mx_with_buy = -1
-
-        for ask, vol in order_depth.sell_orders.items():
-            if ((ask < acc_bid) or ((self.position[product]<0) and (ask == acc_bid))) and cpos < self.POSITION_LIMIT['AMETHYSTS']:
-                mx_with_buy = max(mx_with_buy, ask)
-                order_for = min(-vol, self.POSITION_LIMIT['AMETHYSTS'] - cpos)
-                cpos += order_for
-                assert(order_for >= 0)
-                orders.append(Order(product, ask, order_for))
 
         undercut_buy = best_buy_pr + 1
         undercut_sell = best_sell_pr - 1
-
         bid_pr = min(undercut_buy, acc_bid-1)
         sell_pr = max(undercut_sell, acc_ask+1)
 
-        if (cpos < self.POSITION_LIMIT['AMETHYSTS']) and (self.position[product] < 0):
-            num = min(40, self.POSITION_LIMIT['AMETHYSTS'] - cpos)
+        order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
+        orders += order_s_liq
+
+        # Market making ask orders
+        if (cpos < pos_lim) and (self.position[product] < 0):
+            num = min(40, pos_lim - cpos)
             orders.append(Order(product, min(undercut_buy + 1, acc_bid-1), num))
             cpos += num
 
-        if (cpos < self.POSITION_LIMIT['AMETHYSTS']) and (self.position[product] > 15):
-            num = min(40, self.POSITION_LIMIT['AMETHYSTS'] - cpos)
+        if (cpos < pos_lim) and (self.position[product] > 15):
+            num = min(40, pos_lim - cpos)
             orders.append(Order(product, min(undercut_buy - 1, acc_bid-1), num))
             cpos += num
 
-        if cpos < self.POSITION_LIMIT['AMETHYSTS']:
-            num = min(40, self.POSITION_LIMIT['AMETHYSTS'] - cpos)
+        if cpos < pos_lim:
+            num = min(40, pos_lim - cpos)
             orders.append(Order(product, bid_pr, num))
             cpos += num
         
-        cpos = self.position[product]
+        order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
+        orders += order_b_liq
 
-        for bid, vol in order_depth.buy_orders.items():
-            if ((bid > acc_ask) or ((self.position[product]>0) and (bid == acc_ask))) and cpos > -self.POSITION_LIMIT['AMETHYSTS']:
-                order_for = max(-vol, -self.POSITION_LIMIT['AMETHYSTS']-cpos)
-                # order_for is a negative number denoting how much we will sell
-                cpos += order_for
-                assert(order_for <= 0)
-                orders.append(Order(product, bid, order_for))
-
-        if (cpos > -self.POSITION_LIMIT['AMETHYSTS']) and (self.position[product] > 0):
-            num = max(-40, -self.POSITION_LIMIT['AMETHYSTS']-cpos)
+        # Market making bid orders
+        if (cpos > -pos_lim) and (self.position[product] > 0):
+            num = max(-40, -pos_lim-cpos)
             orders.append(Order(product, max(undercut_sell-1, acc_ask+1), num))
             cpos += num
 
-        if (cpos > -self.POSITION_LIMIT['AMETHYSTS']) and (self.position[product] < -15):
-            num = max(-40, -self.POSITION_LIMIT['AMETHYSTS']-cpos)
+        if (cpos > -pos_lim) and (self.position[product] < -15):
+            num = max(-40, -pos_lim-cpos)
             orders.append(Order(product, max(undercut_sell+1, acc_ask+1), num))
             cpos += num
 
-        if cpos > -self.POSITION_LIMIT['AMETHYSTS']:
-            num = max(-40, -self.POSITION_LIMIT['AMETHYSTS']-cpos)
+        if cpos > -pos_lim:
+            num = max(-40, -pos_lim-cpos)
             orders.append(Order(product, sell_pr, num))
             cpos += num
 
         return orders
 
     def calc_next_price_starfruit(self):
-        # bananas cache stores price from 1 day ago, current day resp
+        # starfruit cache stores price from 1 day ago, current day resp
         # by price, here we mean mid price
 
         coef = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892]
@@ -196,44 +207,31 @@ class Trader:
 
         return int(round(nxt_price))
 
-    def compute_starfruit_orders(self, product, order_depth, acc_bid, acc_ask, LIMIT):
+    def compute_starfruit_orders(self, product, order_depth, acc_bid, acc_ask):
         orders: list[Order] = []
+        lim = self.POSITION_LIMIT[product]
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
-        cpos = self.position[product]
-
-        for ask, vol in order_depth.sell_orders.items():
-            if ((ask <= acc_bid) or ((self.position[product]<0) and (ask == acc_bid+1))) and cpos < LIMIT:
-                order_for = min(-vol, LIMIT - cpos)
-                cpos += order_for
-                assert(order_for >= 0)
-                orders.append(Order(product, ask, order_for))
+        order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.le)
+        orders += order_s_liq
 
         undercut_buy = best_buy_pr + 1
         undercut_sell = best_sell_pr - 1
 
-        bid_pr = min(undercut_buy, acc_bid) # we will shift this by 1 to beat this price
+        bid_pr = min(undercut_buy, acc_bid)
         sell_pr = max(undercut_sell, acc_ask)
 
-        if cpos < LIMIT:
-            num = LIMIT - cpos
+        if cpos < lim:
+            num = lim - cpos
             orders.append(Order(product, bid_pr, num))
             cpos += num
         
-        cpos = self.position[product]
-        
+        order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.ge)
+        orders += order_b_liq
 
-        for bid, vol in order_depth.buy_orders.items():
-            if ((bid >= acc_ask) or ((self.position[product]>0) and (bid+1 == acc_ask))) and cpos > -LIMIT:
-                order_for = max(-vol, -LIMIT-cpos)
-                # order_for is a negative number denoting how much we will sell
-                cpos += order_for
-                assert(order_for <= 0)
-                orders.append(Order(product, bid, order_for))
-
-        if cpos > -LIMIT:
-            num = -LIMIT-cpos
+        if cpos > -lim:
+            num = -lim-cpos
             orders.append(Order(product, sell_pr, num))
             cpos += num
 
@@ -265,18 +263,12 @@ class Trader:
             starfruit_lb = self.calc_next_price_starfruit()-1
             starfruit_ub = self.calc_next_price_starfruit()+1
 
-        amethysts_lb = 10000
-        amethysts_ub = 10000
-
-        acc_bid = {'AMETHYSTS' : amethysts_lb, 'STARFRUIT' : starfruit_lb}
-        acc_ask = {'AMETHYSTS' : amethysts_ub, 'STARFRUIT' : starfruit_ub}
-
         for product in state.order_depths:
             order_depth = state.order_depths[product]
             if product == 'AMETHYSTS':
-                result[product] = self.compute_orders_amethysts(product, order_depth, acc_bid[product], acc_ask[product])
+                result[product] = self.compute_orders_amethysts(product, order_depth, 10_000, 10_000)
             elif product == 'STARFRUIT':
-                result[product] = self.compute_starfruit_orders(product, order_depth, acc_bid[product], acc_ask[product], self.POSITION_LIMIT[product])
+                result[product] = self.compute_starfruit_orders(product, order_depth, starfruit_lb, starfruit_ub)
         
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
