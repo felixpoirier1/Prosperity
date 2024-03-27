@@ -148,30 +148,23 @@ class Trader:
         orders: list[Order] = []
         pos_lim = self.POSITION_LIMIT[product]
 
-        best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
-
-        undercut_buy = best_buy_pr + 1
-        undercut_sell = best_sell_pr - 1
-        bid_pr = min(undercut_buy, acc_bid-1)
-        sell_pr = max(undercut_sell, acc_ask+1)
-
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
         orders += order_s_liq
 
         # Market making ask orders
         if (cpos < pos_lim) and (self.position[product] < lower_pct_check*pos_lim):
             order_vol = min(2*pos_lim, pos_lim - cpos)
-            orders.append(Order(product, min(undercut_buy + 1, acc_bid-1), order_vol))
+            orders.append(Order(product, 9997, order_vol))
             cpos += order_vol
 
         if (cpos < pos_lim) and (self.position[product] > upper_pct_check*pos_lim):
             order_vol = min(2*pos_lim, pos_lim - cpos)
-            orders.append(Order(product, min(undercut_buy - 1, acc_bid-1), order_vol))
+            orders.append(Order(product, 9995, order_vol))
             cpos += order_vol
 
         if cpos < pos_lim:
             order_vol = min(2*pos_lim, pos_lim - cpos)
-            orders.append(Order(product, bid_pr, order_vol))
+            orders.append(Order(product, 9996, order_vol))
             cpos += order_vol
         
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
@@ -180,17 +173,18 @@ class Trader:
         # Market making bid orders
         if (cpos > -pos_lim) and (self.position[product] > lower_pct_check*pos_lim):
             order_vol = max(-2*pos_lim, -pos_lim-cpos)
-            orders.append(Order(product, max(undercut_sell-1, acc_ask+1), order_vol))
+            orders.append(Order(product, 10_003, order_vol))
             cpos += order_vol
+        
 
         if (cpos > -pos_lim) and (self.position[product] < -upper_pct_check*pos_lim):
             order_vol = max(-2*pos_lim, -pos_lim-cpos)
-            orders.append(Order(product, max(undercut_sell+1, acc_ask+1), order_vol))
+            orders.append(Order(product, 10_005, order_vol))
             cpos += order_vol
 
         if cpos > -pos_lim:
             order_vol = max(-2*pos_lim, -pos_lim-cpos)
-            orders.append(Order(product, sell_pr, order_vol))
+            orders.append(Order(product, 10_004, order_vol))
             cpos += order_vol
 
         return orders
