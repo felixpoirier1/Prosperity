@@ -171,7 +171,7 @@ class Trader:
         # starfruit cache stores price from 1 day ago, current day resp
         # by price, here we mean mid price
 
-        coef = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892]
+        coef = [-0.01869561,  0.0455032,  0.16316049,  0.8090892]
         intercept = 4.481696494462085
         nxt_price = intercept
         for i, val in enumerate(self.starfruit_cache):
