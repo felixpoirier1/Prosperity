@@ -109,7 +109,7 @@ class Trader:
     cpnl = defaultdict(lambda : 0)
     sf_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    sf_params = [15.227814, 0.453990, 0.542945] 
+    sf_params = [4.4817, -0.0187, 0.0455,  0.1632,  0.8091]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
