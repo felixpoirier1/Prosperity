@@ -185,8 +185,12 @@ class Trader:
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
-        bid_pr = min(best_buy_pr+1, acc_bid)
-        sell_pr = max(best_sell_pr-1, acc_ask)
+        if self.starfruit_cache == self.starfruit_dim:
+            bid_pr = min(best_buy_pr+1, acc_bid)
+            sell_pr = max(best_sell_pr-1, acc_ask)
+        else:
+            bid_pr = best_buy_pr+1
+            sell_pr = best_sell_pr-1
 
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.le)
         orders += order_s_liq
