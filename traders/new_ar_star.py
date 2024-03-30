@@ -1,3 +1,8 @@
+'''
+Keep in mind that implementing the same code can return two different PnLs. Check with mods. Pm jacek.
+'''
+
+
 import json
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List
@@ -151,6 +156,7 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
         orders += order_s_liq
 
+        # Market making prices
         price_bid = 9997 if 9996 in order_depth.buy_orders else 9996
         price_ask = 10_003 if 10_004 in order_depth.sell_orders else 10_004
 
