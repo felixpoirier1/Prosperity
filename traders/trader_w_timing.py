@@ -1,6 +1,7 @@
 import json
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List
+import time
 
 class Logger:
     def __init__(self) -> None:
@@ -9,13 +10,14 @@ class Logger:
     def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
         self.logs += sep.join(map(str, objects)) + end
 
-    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
+    def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str, ms_taken:int = 0) -> None:
         print(json.dumps([
             self.compress_state(state),
             self.compress_orders(orders),
             conversions,
             trader_data,
             self.logs,
+            ms_taken
         ], cls=ProsperityEncoder, separators=(",", ":")))
 
         self.logs = ""
@@ -118,6 +120,8 @@ class Trader:
         return []
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        start_time = time.process_time()
+
         result = {}
 
         # To be changed later
@@ -125,12 +129,6 @@ class Trader:
         trader_data = ""
 
         self.order_depth = state.order_depths
-
-        for product in state.order_depths:
-            if product == 'AMETHYSTS':
-                result[product] = self.calc_amethysts_orders()
-            elif product == 'STARFRUIT':
-                result[product] = self.calc_starfruit_orders()
-        
-        logger.flush(state, result, conversions, trader_data)
+        end_time = time.process_time()
+        logger.flush(state, result, conversions, trader_data, int((end_time - start_time) * 1000))
         return result, conversions, trader_data
