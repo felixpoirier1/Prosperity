@@ -1,3 +1,8 @@
+'''
+Keep in mind that implementing the same code can return two different PnLs. Check with mods. Pm jacek.
+'''
+
+
 import json
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List
@@ -107,9 +112,9 @@ class Trader:
     person_actvalof_position = defaultdict(def_value)
 
     cpnl = defaultdict(lambda : 0)
-    starfruit_cache = []
+    sf_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    starfruit_dim = 4
+    sf_params = [4.4817, -0.0187, 0.0455,  0.1632,  0.8091]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -151,6 +156,7 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
         orders += order_s_liq
 
+        # Market making prices
         price_bid = 9997 if 9996 in order_depth.buy_orders else 9996
         price_ask = 10_003 if 10_004 in order_depth.sell_orders else 10_004
 
@@ -167,26 +173,18 @@ class Trader:
 
         return orders
 
-    def calc_next_price_starfruit(self):
-        # starfruit cache stores price from 1 day ago, current day resp
-        # by price, here we mean mid price
-
-        coef = [-0.01869561,  0.0455032 ,  0.16316049,  0.8090892]
-        intercept = 4.481696494462085
-        nxt_price = intercept
-        for i, val in enumerate(self.starfruit_cache):
-            nxt_price += val * coef[i]
-
-        return int(round(nxt_price))
-
     def compute_starfruit_orders(self, product, order_depth, acc_bid, acc_ask):
         orders: list[Order] = []
         lim = self.POSITION_LIMIT[product]
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
-        bid_pr = min(best_buy_pr+1, acc_bid)
-        sell_pr = max(best_sell_pr-1, acc_ask)
+        if len(self.sf_cache) == (len(self.sf_params) - 1):
+            bid_pr = min(best_buy_pr+1, acc_bid)
+            sell_pr = max(best_sell_pr-1, acc_ask)
+        else:
+            bid_pr = best_buy_pr+1
+            sell_pr = best_sell_pr-1
 
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.le)
         orders += order_s_liq
@@ -212,21 +210,23 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        if len(self.starfruit_cache) == self.starfruit_dim:
-            self.starfruit_cache.pop(0)
+        if len(self.sf_cache) == (len(self.sf_params) - 1):
+            self.sf_cache.pop(0)
 
         bs_starfruit, bb_starfruit = self.get_deepest_prices(state.order_depths['STARFRUIT'])
 
-        self.starfruit_cache.append((bs_starfruit+bb_starfruit)/2)
+        self.sf_cache.append((bs_starfruit+bb_starfruit)/2)
 
         INF = 1e9
     
         starfruit_lb = -INF
         starfruit_ub = INF
 
-        if len(self.starfruit_cache) == self.starfruit_dim:
-            starfruit_lb = self.calc_next_price_starfruit()-1
-            starfruit_ub = self.calc_next_price_starfruit()+1
+        if len(self.sf_cache) == (len(self.sf_params) - 1):
+            next_price = int((np.array(self.sf_cache) * np.array(self.sf_params[1:])).sum() + self.sf_params[0])
+
+            starfruit_lb = next_price-1
+            starfruit_ub = next_price+1
 
         for product in state.order_depths:
             order_depth = state.order_depths[product]

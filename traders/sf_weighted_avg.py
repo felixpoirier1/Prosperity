@@ -114,7 +114,7 @@ class Trader:
     cpnl = defaultdict(lambda : 0)
     sf_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    sf_params = [4.4817, -0.0187, 0.0455,  0.1632,  0.8091]
+    sf_params = [-16.368438120524843, 0.07294425, 0.13279522, 0.19364201, 0.60387595]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -200,6 +200,26 @@ class Trader:
 
         return orders
 
+    def compute_sf_weighted_avg(self, order_depth):
+        weighted_ask = 0
+        weighted_bid = 0
+        ask_vol = 0
+        bid_vol = 0
+
+        for order_ask in order_depth.sell_orders.items():
+            ask_vol += -order_ask[1]
+
+        for order_bid in order_depth.buy_orders.items():
+            bid_vol += order_bid[1]
+
+        for order_ask in order_depth.sell_orders.items():
+            weighted_ask += order_ask[0]*-(order_ask[1]/ask_vol)
+
+        for order_bid in order_depth.buy_orders.items():
+            weighted_bid += order_bid[0]*(order_bid[1]/bid_vol)
+
+        return (weighted_bid + weighted_ask) / 2
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
         result = {}
 
@@ -213,9 +233,7 @@ class Trader:
         if len(self.sf_cache) == (len(self.sf_params) - 1):
             self.sf_cache.pop(0)
 
-        bs_starfruit, bb_starfruit = self.get_deepest_prices(state.order_depths['STARFRUIT'])
-
-        self.sf_cache.append((bs_starfruit+bb_starfruit)/2)
+        self.sf_cache.append(self.compute_sf_weighted_avg(state.order_depths['STARFRUIT']))
 
         INF = 1e9
     

@@ -151,7 +151,7 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
         orders += order_s_liq
 
-        # Market making ask orders
+        # Market making bid orders
         if (cpos < pos_lim) and (self.position[product] < lower_pct_check*pos_lim):
             order_vol = min(2*pos_lim, pos_lim - cpos)
             orders.append(Order(product, 9997, order_vol))
@@ -170,7 +170,7 @@ class Trader:
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
         orders += order_b_liq
 
-        # Market making bid orders
+        # Market making ask orders
         if (cpos > -pos_lim) and (self.position[product] > lower_pct_check*pos_lim):
             order_vol = max(-2*pos_lim, -pos_lim-cpos)
             orders.append(Order(product, 10_003, order_vol))
@@ -210,11 +210,12 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.le)
         orders += order_s_liq
 
-        undercut_buy = best_buy_pr + 1
-        undercut_sell = best_sell_pr - 1
-
-        bid_pr = min(undercut_buy, acc_bid)
-        sell_pr = max(undercut_sell, acc_ask)
+        if len(self.starfruit_cache) == self.starfruit_dim:
+            bid_pr = min(best_buy_pr+1, acc_bid)
+            sell_pr = max(best_sell_pr-1, acc_ask)
+        else:
+            bid_pr = best_buy_pr+1
+            sell_pr = best_sell_pr-1
 
         if cpos < lim:
             num = lim - cpos
@@ -260,7 +261,7 @@ class Trader:
         for product in state.order_depths:
             order_depth = state.order_depths[product]
             if product == 'AMETHYSTS':
-                result[product] = self.compute_orders_amethysts(product, order_depth, 10_000, 10_000, 0.75, 0)
+                result[product] = self.compute_orders_amethysts(product, order_depth, 10_000, 10_000, 0.85, 0)
             elif product == 'STARFRUIT':
                 result[product] = self.compute_starfruit_orders(product, order_depth, starfruit_lb, starfruit_ub)
         
