@@ -249,6 +249,9 @@ class Trader:
         if cpos < lim:
             orders.append(Order(product, bid_pr, lim - cpos))
         
+        if len(self.sf_mid_cache) < len(self.sf_mid_params) - 1:
+            next_mid = 1e8
+
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
         orders += order_b_liq
 
