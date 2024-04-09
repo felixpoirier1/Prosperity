@@ -161,8 +161,8 @@ class Trader:
         price_ask = 10_003 if 10_004 in order_depth.sell_orders else 10_004
 
         if cpos == -pos_lim:
-            orders.append(Order(product, 10_002, 2))
-            cpos += 2
+            orders.append(Order(product, 10_002, 1))
+            cpos += 1
 
         # Market making bid orders
         if cpos < pos_lim:
@@ -172,8 +172,8 @@ class Trader:
         orders += order_b_liq
 
         if cpos == pos_lim:
-            orders.append(Order(product, 9998, -2))
-            cpos -= 2
+            orders.append(Order(product, 9998, -1))
+            cpos -= 1
 
         # Market making ask orders
         if cpos > -pos_lim:
