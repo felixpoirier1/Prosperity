@@ -164,12 +164,20 @@ class Trader:
         price_bid = 9997 if 9996 in order_depth.buy_orders else 9996
         price_ask = 10_003 if 10_004 in order_depth.sell_orders else 10_004
 
+        if cpos == -pos_lim:
+            orders.append(Order(product, 10_002, 2))
+            cpos += 2
+
         # Market making bid orders
         if cpos < pos_lim:
             orders.append(Order(product, price_bid, pos_lim-cpos))
         
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
         orders += order_b_liq
+
+        if cpos == pos_lim:
+            orders.append(Order(product, 9998, -2))
+            cpos -= 2
 
         # Market making ask orders
         if cpos > -pos_lim:
