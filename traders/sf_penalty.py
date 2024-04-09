@@ -254,6 +254,12 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, next_mid-1, True, product, operator.le)
         orders += order_s_liq
 
+        if cpos >= 15:
+            try:
+                bid_pr = sorted(order_depth.buy_orders.items())[-2][0]
+            except Exception as e:
+                bid_pr = sorted(order_depth.buy_orders.items())[-1][0]-1
+
         if cpos < lim:
             orders.append(Order(product, bid_pr, lim - cpos))
         
@@ -262,6 +268,12 @@ class Trader:
 
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
         orders += order_b_liq
+
+        if cpos <= -15:
+            try:
+                ask_pr = sorted(order_depth.sell_orders.items())[1][0]
+            except Exception as e:
+                ask_pr = sorted(order_depth.sell_orders.items())[0][0]+1
 
         if cpos > -lim:
             orders.append(Order(product, ask_pr, -lim-cpos))
