@@ -116,9 +116,9 @@ class Trader:
     sf_ask_cache = []
     sf_mid_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    sf_bid_params = [10.218076238395952, 0.12510656, 0.10468357, 0.20735852, 0.56092445]
-    sf_ask_params = [-39.70531615296659, 0.07975563, 0.12160025, 0.24590879, 0.56051938]
-    sf_mid_params = [-16.368438120524843, 0.07294425, 0.13279522, 0.19364201, 0.60387595]
+    sf_bid_params = [0.06845857, 0.04921406, 0.16307462, 0.7194037]
+    sf_ask_params = [0.07782368, 0.05235027, 0.22038055, 0.64929897]
+    sf_mid_params = [0.06197548, 0.0408975 , 0.16921832, 0.72791073]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -206,13 +206,13 @@ class Trader:
         return weighted_bid, weighted_ask
 
     def sf_caches(self, order_depth):
-        if len(self.sf_bid_cache) == (len(self.sf_bid_params) - 1):
+        if len(self.sf_bid_cache) == len(self.sf_bid_params):
             self.sf_bid_cache.pop(0)
         
-        if len(self.sf_ask_cache) == (len(self.sf_ask_params) - 1):
+        if len(self.sf_ask_cache) == len(self.sf_ask_params):
             self.sf_ask_cache.pop(0)
         
-        if len(self.sf_mid_cache) == (len(self.sf_mid_params) - 1):
+        if len(self.sf_mid_cache) == len(self.sf_mid_params):
             self.sf_mid_cache.pop(0)
 
         weighted_bid, weighted_ask = self.compute_sf_weighted_avg(order_depth)
@@ -257,7 +257,7 @@ class Trader:
         if cpos < lim:
             orders.append(Order(product, bid_pr, lim - cpos))
         
-        if len(self.sf_mid_cache) < len(self.sf_mid_params) - 1:
+        if len(self.sf_mid_cache) < len(self.sf_mid_params):
             next_mid = 1e8
 
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
@@ -282,10 +282,10 @@ class Trader:
 
         next_bid, next_ask, next_mid = (0, 0 ,0)
 
-        if len(self.sf_mid_cache) == (len(self.sf_mid_params) - 1):
-            next_bid = int((np.array(self.sf_bid_cache) * np.array(self.sf_bid_params[1:])).sum() + self.sf_bid_params[0])
-            next_ask = int((np.array(self.sf_ask_cache) * np.array(self.sf_ask_params[1:])).sum() + self.sf_ask_params[0])
-            next_mid = int((np.array(self.sf_mid_cache) * np.array(self.sf_mid_params[1:])).sum() + self.sf_mid_params[0])
+        if len(self.sf_mid_cache) == len(self.sf_mid_params):
+            next_bid = int((np.array(self.sf_bid_cache) * np.array(self.sf_bid_params)).sum())
+            next_ask = int((np.array(self.sf_ask_cache) * np.array(self.sf_ask_params)).sum())
+            next_mid = int((np.array(self.sf_mid_cache) * np.array(self.sf_mid_params)).sum())
 
         for product in state.order_depths:
             order_depth = state.order_depths[product]
