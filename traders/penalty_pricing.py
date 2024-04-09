@@ -113,8 +113,8 @@ class Trader:
 
     cpnl = defaultdict(lambda : 0)
     sf_cache = []
-    POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    sf_params = [4.407848058522177, 0.1024945 , 0.18003184, 0.71658316]
+    POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20}
+    sf_params = [0.08442609, 0.18264657, 0.7329293]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -193,7 +193,7 @@ class Trader:
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
-        if len(self.sf_cache) == (len(self.sf_params) - 1):
+        if len(self.sf_cache) == len(self.sf_params):
             bid_pr = min(best_buy_pr+1, acc_bid)
             sell_pr = max(best_sell_pr-1, acc_ask)
         else:
@@ -203,11 +203,17 @@ class Trader:
         order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.le)
         orders += order_s_liq
 
+        if cpos == 20:
+            bid_pr -= 1
+
         if cpos < lim:
             orders.append(Order(product, bid_pr, lim - cpos))
         
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.ge)
         orders += order_b_liq
+
+        if cpos == 20:
+            sell_pr += 1
 
         if cpos > -lim:
             orders.append(Order(product, sell_pr, -lim-cpos))
@@ -224,7 +230,7 @@ class Trader:
         conversions = 0
         trader_data = ""
 
-        if len(self.sf_cache) == (len(self.sf_params) - 1):
+        if len(self.sf_cache) == len(self.sf_params):
             self.sf_cache.pop(0)
 
         bs_starfruit, bb_starfruit = self.get_deepest_prices(state.order_depths['STARFRUIT'])
@@ -236,8 +242,8 @@ class Trader:
         starfruit_lb = -INF
         starfruit_ub = INF
 
-        if len(self.sf_cache) == (len(self.sf_params) - 1):
-            next_price = int((np.array(self.sf_cache) * np.array(self.sf_params[1:])).sum() + self.sf_params[0])
+        if len(self.sf_cache) == len(self.sf_params):
+            next_price = int((np.array(self.sf_cache) * np.array(self.sf_params)).sum())
 
             starfruit_lb = next_price-1
             starfruit_ub = next_price+1
