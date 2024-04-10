@@ -208,9 +208,9 @@ class Trader:
 
         if len(self.sf_cache) == len(self.sf_params):
             top_bid = sorted(order_depth.buy_orders.items(), reverse=True)[0][0]
+            top_bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0][1]
             if len(order_depth.buy_orders) >= 3:
-                second_level_bid = sorted(order_depth.buy_orders.items(), reverse=True)[1][0]
-                top_bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0][1]
+                second_level_bid = sorted(order_depth.buy_orders.items(), reverse=True)[1][0]      
                 quick_sell_bid = top_bid-1
                 if abs(second_level_bid - best_buy_pr) >= 4:
                     quick_sell_bid = second_level_bid
@@ -219,14 +219,14 @@ class Trader:
             bid_pr = min(best_buy_pr+1, next_mid-1)
 
             top_ask = sorted(order_depth.sell_orders.items())[0][0]
+            top_ask_vol = sorted(order_depth.sell_orders.items())[0][1]
             if len(order_depth.sell_orders) >= 3:
                 second_level_ask = sorted(order_depth.sell_orders.items())[1][0]
-                top_ask_vol = sorted(order_depth.sell_orders.items())[0][1]
                 quick_sell_ask = top_ask+1
                 if abs(second_level_ask - best_sell_pr) >= 4:
                     quick_sell_ask = second_level_ask
                 starfruit_signal_ask = True
-            
+
             sell_pr = max(best_sell_pr-1, next_mid+1)
 
         else:
