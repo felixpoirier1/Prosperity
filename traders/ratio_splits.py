@@ -209,8 +209,8 @@ class Trader:
 
         if len(self.sf_cache) == len(self.sf_params):
             try:
-                test = sorted(order_depth.buy_orders.items())[-3][0]
-                buy_pr = sorted(order_depth.buy_orders.items())[-2][0]
+                test = sorted(order_depth.buy_orders.items())[2][0]
+                buy_pr = sorted(order_depth.buy_orders.items())[1][0]
                 self.starfruit_signal_bid = True
             except Exception as e:
                 pass
@@ -218,8 +218,8 @@ class Trader:
             bid_pr = min(best_buy_pr+1, next_mid-1)
 
             try:
-                test = sorted(order_depth.sell_orders.items())[2][0]
-                ask_pr = sorted(order_depth.sell_orders.items())[1][0]
+                test = sorted(order_depth.sell_orders.items())[-3][0]
+                ask_pr = sorted(order_depth.sell_orders.items())[-2][0]
                 self.starfruit_signal_ask = True
             except Exception as e:
                 pass
