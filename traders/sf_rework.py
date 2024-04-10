@@ -116,15 +116,15 @@ class Trader:
     sf_ask_cache = []
     sf_mid_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20} 
-    sf_bid_params = [7.7357452758051295, 0.15493254, 0.15654014, 0.6871151]
-    sf_ask_params = [2.0463379720449666, 0.07473456, 0.27021848, 0.65448301]
-    sf_mid_params = [4.407848058522177, 0.1024945 , 0.18003184, 0.71658316]
+    sf_bid_params = [0, 0.09586395, 0.17745478, 0.72683211]
+    sf_ask_params = [0, 0.10164347, 0.24079169, 0.65741821]
+    sf_mid_params = [0, 0.08442609, 0.18264657, 0.7329293]
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
         best_buy_pr = sorted(order_depth.buy_orders.items())[0][0]
 
-        return best_buy_pr+1, best_sell_pr-1
+        return best_buy_pr, best_sell_pr
 
     def get_price_condition(self, is_sell, price, acc_price, product, comp_op):
         first_val = comp_op(price, acc_price)
@@ -164,9 +164,12 @@ class Trader:
         price_bid = 9997 if 9996 in order_depth.buy_orders else 9996
         price_ask = 10_003 if 10_004 in order_depth.sell_orders else 10_004
 
+        if cpos >= 10:
+            price_bid = 9996
+
         if cpos == -pos_lim:
-            orders.append(Order(product, 10_002, 2))
-            cpos += 2
+            orders.append(Order(product, 10_002, 1))
+            cpos += 1
 
         # Market making bid orders
         if cpos < pos_lim:
@@ -175,9 +178,12 @@ class Trader:
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
         orders += order_b_liq
 
+        if cpos <= -10:
+            price_ask = 10_004
+
         if cpos == pos_lim:
-            orders.append(Order(product, 9998, -2))
-            cpos -= 2
+            orders.append(Order(product, 9998, -1))
+            cpos -= 1
 
         # Market making ask orders
         if cpos > -pos_lim:
@@ -218,11 +224,14 @@ class Trader:
         weighted_bid, weighted_ask = self.compute_sf_weighted_avg(order_depth)
         self.sf_bid_cache.append(weighted_bid)
         self.sf_ask_cache.append(weighted_ask)
-        self.sf_mid_cache.append((weighted_bid+weighted_ask)/2)
+
+        b_deep, s_deep = self.get_deepest_prices(order_depth)
+        self.sf_mid_cache.append((b_deep+s_deep)/2)
 
     def calc_sf_prices(self, order_depth, next_bid, next_ask):
         if not next_bid or not next_ask:
-            return self.get_deepest_prices(order_depth)
+            bid_pr, ask_pr = self.get_deepest_prices(order_depth)
+            return bid_pr+1, ask_pr-1
 
         bid_pr = sorted(order_depth.buy_orders.items())[-1][0]
         ask_pr = sorted(order_depth.sell_orders.items())[0][0]

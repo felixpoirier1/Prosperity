@@ -115,6 +115,8 @@ class Trader:
     sf_cache = []
     POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20}
     sf_params = [0.08442609, 0.18264657, 0.7329293]
+    starfruit_signal_bid = False
+    starfruit_signal_ask = False
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -201,12 +203,29 @@ class Trader:
     def compute_starfruit_orders(self, product, order_depth, next_mid):
         orders: list[Order] = []
         lim = self.POSITION_LIMIT[product]
+        ratio = 0.5
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
         if len(self.sf_cache) == len(self.sf_params):
+            try:
+                test = sorted(order_depth.buy_orders.items())[2][0]
+                buy_pr = sorted(order_depth.buy_orders.items())[1][0]
+                self.starfruit_signal_bid = True
+            except Exception as e:
+                pass
+            
             bid_pr = min(best_buy_pr+1, next_mid-1)
+
+            try:
+                test = sorted(order_depth.sell_orders.items())[-3][0]
+                ask_pr = sorted(order_depth.sell_orders.items())[-2][0]
+                self.starfruit_signal_ask = True
+            except Exception as e:
+                pass
+            
             sell_pr = max(best_sell_pr-1, next_mid+1)
+
         else:
             bid_pr = best_buy_pr+1
             sell_pr = best_sell_pr-1
@@ -215,7 +234,13 @@ class Trader:
         orders += order_s_liq
 
         if cpos < lim:
-            orders.append(Order(product, bid_pr, lim - cpos))
+            if self.starfruit_signal_bid:
+                order_bid = int((lim-cpos)*ratio)
+                cpos += order_bid
+                orders.append(Order(product, buy_pr, order_bid))
+                orders.append(Order(product, buy_pr-1, lim - cpos))
+            else:
+                orders.append(Order(product, bid_pr, lim - cpos))
 
         if not next_mid:
             next_mid = 1E8
@@ -224,7 +249,17 @@ class Trader:
         orders += order_b_liq
 
         if cpos > -lim:
-            orders.append(Order(product, sell_pr, -lim-cpos))
+            if self.starfruit_signal_ask:
+                order_ask = int((-lim-cpos)*ratio)
+                cpos += order_ask
+                orders.append(Order(product, ask_pr, order_ask))
+                orders.append(Order(product, ask_pr+1, -lim-cpos))
+            else:
+                orders.append(Order(product, sell_pr, -lim-cpos))
+
+        self.starfruit_signal_bid = False
+        self.starfruit_signal_ask = False
+        ratio = 0.5
 
         return orders
 
