@@ -218,7 +218,7 @@ class Trader:
             return
         state_dict = jsonpickle.decode(json_string)
         for key, value in state_dict.items():
-            logger.print('We did something')
+            logger.print('lambda error')
             logger.print(key, value)
             setattr(self, key, value)
     
