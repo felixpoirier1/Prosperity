@@ -1,4 +1,5 @@
 import json
+import jsonpickle
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List
 import collections
@@ -11,20 +12,11 @@ from functools import wraps
 
 class Logger:
     def __init__(self) -> None:
-        self.__logs = ""
+        self.logs = ""
         self.args = {}
-    """
-    @property
-    def logs(self) -> str:
-        return self.__logs + "\nargs: " + json.dumps(self.args)
-    
-    @logs.setter
-    def logs(self, value: str) -> None:
-        self.__logs = value
-    """
     
     def print(self, *objects: Any, sep: str = " ", end: str = "\n") -> None:
-        self.__logs += sep.join(map(str, objects)) + end
+        self.logs += sep.join(map(str, objects)) + end
 
     def flush(self, state: TradingState, orders: dict[Symbol, list[Order]], conversions: int, trader_data: str) -> None:
         print(json.dumps([
@@ -32,7 +24,7 @@ class Logger:
             self.compress_orders(orders),
             conversions,
             trader_data,
-            self.__logs,
+            self.logs,
         ], cls=ProsperityEncoder, separators=(",", ":")))
 
         self.logs = ""
@@ -103,17 +95,6 @@ class Logger:
         return compressed
 
 logger = Logger()
-
-def logger_template(func):
-    @wraps(func)
-    def wrapper(self, *args, **kwargs):
-        start = time.time()
-        result = func(self, *args, **kwargs)
-        end = time.time()
-        execution_time = end - start
-        logger.args["time"] = execution_time 
-        return result
-    return wrapper
 
 empty_dict = {'STARFRUIT':0, 'AMETHYSTS':0} 
 
@@ -217,8 +198,26 @@ class Trader:
 
         return orders
     
-    @logger_template
+    def deserializeJson(self, json_string):
+        if json_string == "":
+            logger.print("Empty trader data")
+            return
+        state_dict = jsonpickle.decode(json_string)
+        for key, value in state_dict.items():
+            logger.print(key, value)
+            setattr(self, key, value)
+
+    
+    def serializeJson(self):
+        return jsonpickle.encode(self)
+    
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        try:
+            self.deserializeJson(state.traderData)
+        except:
+            logger.print("Error in deserializing trader data")
+            pass
+
         result = {}
 
         for key, val in state.position.items():
@@ -227,7 +226,7 @@ class Trader:
         # To be changed later
         conversions = 0
         trader_data = ""
-
+ 
         if len(self.sf_cache) == (len(self.sf_params) - 1):
             self.sf_cache.pop(0)
 
@@ -253,6 +252,7 @@ class Trader:
             elif product == 'STARFRUIT':
                 result[product] = self.compute_starfruit_orders(product, order_depth, starfruit_lb, starfruit_ub)
         
+        trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
 
