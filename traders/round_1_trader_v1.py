@@ -1,12 +1,7 @@
-'''
-Keep in mind that implementing the same code can return two different PnLs. Check with mods. Pm jacek.
-'''
-
-
 import json
+import jsonpickle
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List
-import collections
 from collections import defaultdict
 import numpy as np
 import copy
@@ -96,7 +91,6 @@ class Logger:
         return compressed
 
 logger = Logger()
-
 
 class Trader:
     position = copy.deepcopy({'STARFRUIT':0, 'AMETHYSTS':0})
@@ -218,7 +212,25 @@ class Trader:
 
         return orders
 
+    def deserializeJson(self, json_string):
+        if json_string == "":
+            logger.print("Empty trader data")
+            return
+        state_dict = jsonpickle.decode(json_string)
+        for key, value in state_dict.items():
+            logger.print('We did something')
+            logger.print(key, value)
+            setattr(self, key, value)
+    
+    def serializeJson(self):
+        return jsonpickle.encode(self.__dict__)
+
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        try:
+            self.deserializeJson(state.traderData)
+        except:
+            logger.print("Error in deserializing trader data")
+
         result = {}
 
         for key, val in state.position.items():
@@ -226,7 +238,7 @@ class Trader:
 
         # To be changed later
         conversions = 0
-        trader_data = ""
+        trader_data = state.traderData
 
         if len(self.sf_cache) == len(self.sf_params):
             self.sf_cache.pop(0)
@@ -246,6 +258,7 @@ class Trader:
                 result[product] = self.compute_orders_amethysts(product, order_depth, 10_000, 10_000)
             elif product == 'STARFRUIT':
                 result[product] = self.compute_starfruit_orders(product, order_depth, next_price)
-        
+
+        trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
