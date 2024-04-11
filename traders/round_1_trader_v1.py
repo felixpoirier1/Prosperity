@@ -98,18 +98,8 @@ class Logger:
 logger = Logger()
 
 
-empty_dict = {'STARFRUIT':0, 'AMETHYSTS':0} 
-
-def def_value():
-    return copy.deepcopy(empty_dict)
-
-
 class Trader:
-    position = copy.deepcopy(empty_dict)
-    volume_traded = copy.deepcopy(empty_dict)
-
-    person_position = defaultdict(def_value)
-    person_actvalof_position = defaultdict(def_value)
+    position = copy.deepcopy({'STARFRUIT':0, 'AMETHYSTS':0})
 
     cpnl = defaultdict(lambda : 0)
     sf_cache = []
