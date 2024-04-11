@@ -171,12 +171,12 @@ class Trader:
         else:
             price_ask = 10_004
 
-        if cpos >= 10:
-            price_bid = 9996
+        #if cpos >= 10:
+        #    price_bid = 9996
 
-        if cpos == -pos_lim:
-            orders.append(Order(product, 10_002, 1))
-            cpos += 1
+        #if cpos == -pos_lim:
+        #    orders.append(Order(product, 10_002, 1))
+        #    cpos += 1
 
         # Market making bid orders
         if cpos < pos_lim:
@@ -185,12 +185,12 @@ class Trader:
         order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
         orders += order_b_liq
 
-        if cpos <= -10:
-            price_ask = 10_004
+        #if cpos <= -10:
+        #    price_ask = 10_004
 
-        if cpos == pos_lim:
-            orders.append(Order(product, 9998, -1))
-            cpos -= 1
+        #if cpos == pos_lim:
+        #    orders.append(Order(product, 9998, -1))
+        #    cpos -= 1
 
         # Market making ask orders
         if cpos > -pos_lim:
@@ -201,60 +201,30 @@ class Trader:
     def compute_starfruit_orders(self, product, order_depth, next_mid):
         orders: list[Order] = []
         lim = self.POSITION_LIMIT[product]
-        starfruit_signal_bid = False
-        starfruit_signal_ask = False
 
         best_sell_pr, best_buy_pr = self.get_deepest_prices(order_depth)
 
         if len(self.sf_cache) == len(self.sf_params):
-            top_bid = sorted(order_depth.buy_orders.items(), reverse=True)[0][0]
-            top_bid_vol = sorted(order_depth.buy_orders.items(), reverse=True)[0][1]
-            
             bid_pr = min(best_buy_pr+1, next_mid-1)
-
-            top_ask = sorted(order_depth.sell_orders.items())[0][0]
-            top_ask_vol = sorted(order_depth.sell_orders.items())[0][1]
-
             sell_pr = max(best_sell_pr-1, next_mid+1)
-
         else:
             bid_pr = best_buy_pr+1
             sell_pr = best_sell_pr-1
 
-        order_s_liq, bcpos = self.liquity_taking(order_depth.sell_orders, next_mid-1, True, product, operator.le)
+        order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, next_mid-1, True, product, operator.le)
+        orders += order_s_liq
+
+        if cpos < lim:
+            orders.append(Order(product, bid_pr, lim - cpos))
 
         if not next_mid:
             next_mid = 1E8
-
-        order_b_liq, acpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
-
-        orders += order_s_liq
-
-        if order_b_liq and len(order_depth.buy_orders) >= 3:
-            if len(self.sf_cache) == len(self.sf_params):
-                starfruit_signal_bid = True
-
-        if bcpos < lim:
-            if starfruit_signal_bid:
-                order_bid = min(top_bid_vol, lim-bcpos)
-                bcpos += order_bid
-                orders.append(Order(product, top_bid-1, order_bid))
-
-            orders.append(Order(product, bid_pr, lim-bcpos))
-
+        
+        order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
         orders += order_b_liq
 
-        if order_s_liq and len(order_depth.sell_orders) >= 3:
-            if len(self.sf_cache) == len(self.sf_params):
-                starfruit_signal_ask = True
-
-        if acpos > -lim:
-            if starfruit_signal_ask:
-                order_ask = max(top_ask_vol, -lim-acpos)
-                acpos += order_ask
-                orders.append(Order(product, top_ask+1, order_ask))
-
-            orders.append(Order(product, sell_pr, -lim-acpos))
+        if cpos > -lim:
+            orders.append(Order(product, sell_pr, -lim-cpos))
 
         return orders
 
