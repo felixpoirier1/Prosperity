@@ -94,12 +94,13 @@ logger = Logger()
 
 class Trader:
     def __init__(self) -> None:
-        self.position = copy.deepcopy({'STARFRUIT':0, 'AMETHYSTS':0})
+        self.position = copy.deepcopy({'STARFRUIT':0, 'AMETHYSTS':0, 'ORCHIDS':0})
 
         self.cpnl = defaultdict(lambda : 0)
         self.sf_cache = []
-        self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20}
+        self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20, 'ORCHIDS':100}
         self.sf_params = [0.08442609, 0.18264657, 0.7329293]
+        self.time = 0
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -213,6 +214,36 @@ class Trader:
 
         return orders
 
+    def computer_orchids_orders(self, product, order_depth, observation):
+        orders: list[Order] = []
+        pos_lim = self.POSITION_LIMIT[product]
+        cpos = self.position[product]
+
+        logger.print(observation.bidPrice,
+                     observation.askPrice,
+                     observation.transportFees, 
+                     observation.exportTariff,
+                     observation.importTariff,
+                     observation.sunlight,
+                     observation.humidity)
+
+        ask_pr, buy_pr = sorted(order_depth.sell_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
+
+        # bid arb
+        if buy_pr - observation.askPrice - observation.transportFees - observation.importTariff > 0:
+            logger.print(f'Bid arb')
+
+        # ask arb
+        if observation.bidPrice - ask_pr - observation.transportFees - observation.exportTariff > 0:
+            logger.print(f'Ask arb')
+
+        if self.time == 0:
+            orders.append(Order(product, buy_pr, -pos_lim-cpos))
+        elif self.time % 3 == 0:
+            orders.append(Order(product, ask_pr-2, pos_lim-cpos))
+
+        return orders, 0
+
     def deserializeJson(self, json_string):
         if json_string == "":
             logger.print("Empty trader data")
@@ -237,8 +268,10 @@ class Trader:
             self.position[key] = val
 
         # To be changed later
-        conversions = 0
+        conversions = -1
         trader_data = state.traderData
+        conversion_observation = state.observations.conversionObservations
+        orchid_observation = conversion_observation['ORCHIDS']
 
         if len(self.sf_cache) == len(self.sf_params):
             self.sf_cache.pop(0)
@@ -258,6 +291,11 @@ class Trader:
                 result[product] = self.compute_orders_amethysts(product, order_depth, 10_000, 10_000)
             elif product == 'STARFRUIT':
                 result[product] = self.compute_starfruit_orders(product, order_depth, next_price)
+            elif product == 'ORCHIDS':
+                orchid_orders, conversions = self.computer_orchids_orders(product, order_depth, orchid_observation)
+                result[product] = orchid_orders
+
+        self.time += 1
 
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
