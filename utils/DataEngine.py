@@ -9,7 +9,7 @@ class DataEngine:
         self.data = {}
         i=0
         for folder in sorted(os.listdir(base_path)):
-            if folder == '.DS_Store' or folder == 'island-data-battle-round-0':
+            if folder == '.DS_Store' or folder == 'round0':
                 continue
             i+=1
             folder_path = os.path.join(base_path, folder)
