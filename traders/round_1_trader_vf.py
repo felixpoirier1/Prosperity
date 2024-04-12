@@ -137,8 +137,8 @@ class Trader:
         orders: list[Order] = []
         pos_lim = self.POSITION_LIMIT[product]
 
-        order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
-        orders += order_s_liq
+        order_s_liq, bcpos = self.liquity_taking(order_depth.sell_orders, acc_bid, True, product, operator.lt)
+        order_b_liq, acpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
 
         # Market making prices
         if 9998 in order_depth.buy_orders:
@@ -155,30 +155,31 @@ class Trader:
         else:
             price_ask = 10_004
 
-        #if cpos >= 10:
-        #    price_bid = 9996
+        orders += order_s_liq
+
+        # if bcpos <= -15:
+        #    price_bid += 1
 
         #if cpos == -pos_lim:
         #    orders.append(Order(product, 10_002, 1))
         #    cpos += 1
 
         # Market making bid orders
-        if cpos < pos_lim:
-            orders.append(Order(product, price_bid, pos_lim-cpos))
+        if bcpos < pos_lim:
+            orders.append(Order(product, price_bid, pos_lim-bcpos))
         
-        order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, acc_ask, False, product, operator.gt)
         orders += order_b_liq
 
-        #if cpos <= -10:
-        #    price_ask = 10_004
+        #if acpos >= 15:
+        #    price_ask -= 1
 
         #if cpos == pos_lim:
         #    orders.append(Order(product, 9998, -1))
         #    cpos -= 1
 
         # Market making ask orders
-        if cpos > -pos_lim:
-            orders.append(Order(product, price_ask, -pos_lim-cpos))
+        if acpos > -pos_lim:
+            orders.append(Order(product, price_ask, -pos_lim-acpos))
 
         return orders
 
@@ -195,20 +196,20 @@ class Trader:
             bid_pr = best_buy_pr+1
             sell_pr = best_sell_pr-1
 
-        order_s_liq, cpos = self.liquity_taking(order_depth.sell_orders, next_mid-1, True, product, operator.le)
+        order_s_liq, bcpos = self.liquity_taking(order_depth.sell_orders, next_mid-1, True, product, operator.le)
         orders += order_s_liq
 
-        if cpos < lim:
-            orders.append(Order(product, bid_pr, lim - cpos))
+        if bcpos < lim:
+            orders.append(Order(product, bid_pr, lim - bcpos))
 
         if not next_mid:
             next_mid = 1E8
         
-        order_b_liq, cpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
+        order_b_liq, acpos = self.liquity_taking(order_depth.buy_orders, next_mid+1, False, product, operator.ge)
         orders += order_b_liq
 
-        if cpos > -lim:
-            orders.append(Order(product, sell_pr, -lim-cpos))
+        if acpos > -lim:
+            orders.append(Order(product, sell_pr, -lim-acpos))
 
         return orders
 
