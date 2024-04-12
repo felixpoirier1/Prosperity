@@ -214,35 +214,46 @@ class Trader:
 
         return orders
 
+    def find_arbitrage(self, product, order_depth, observation):
+        orders: list[Order] = []
+        conversions = 0
+        cpos = self.position[product]
+
+        ap = observation.askPrice
+        it = observation.importTariff
+        tf = observation.transportFees
+
+        for bid in order_depth.buy_orders.items():
+            if bid[0] - ap - tf - it > 0:
+                order_amt = min(bid[1], -cpos, 100+cpos)
+                if order_amt > 0:
+                    orders.append(Order(product, bid[0], -order_amt))
+                    cpos += order_amt
+                    conversions += order_amt
+
+        return orders, conversions
+
     def computer_orchids_orders(self, product, order_depth, observation):
         orders: list[Order] = []
         pos_lim = self.POSITION_LIMIT[product]
-        cpos = self.position[product]
-
-        logger.print(observation.bidPrice,
-                     observation.askPrice,
-                     observation.transportFees, 
-                     observation.exportTariff,
-                     observation.importTariff,
-                     observation.sunlight,
-                     observation.humidity)
+        apos = self.position[product]
+        bpos = self.position[product]
+        convsersions = 0
 
         ask_pr, buy_pr = sorted(order_depth.sell_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
 
-        # bid arb
-        if buy_pr - observation.askPrice - observation.transportFees - observation.importTariff > 0:
-            logger.print(f'Bid arb')
+        arb_orders, arb_conversions = self.find_arbitrage(product, order_depth, observation)
 
-        # ask arb
-        if observation.bidPrice - ask_pr - observation.transportFees - observation.exportTariff > 0:
-            logger.print(f'Ask arb')
+        apos -= arb_conversions
 
-        if self.time == 0:
-            orders.append(Order(product, buy_pr, -pos_lim-cpos))
-        elif self.time % 3 == 0:
-            orders.append(Order(product, ask_pr-2, pos_lim-cpos))
+        orders += arb_orders
+        convsersions += arb_conversions
 
-        return orders, 0
+        if apos != -50:
+            if self.time % 4 == 0:
+                orders.append(Order(product, buy_pr+2, -50))
+
+        return orders, convsersions
 
     def deserializeJson(self, json_string):
         if json_string == "":
@@ -268,7 +279,6 @@ class Trader:
             self.position[key] = val
 
         # To be changed later
-        conversions = -1
         trader_data = state.traderData
         conversion_observation = state.observations.conversionObservations
         orchid_observation = conversion_observation['ORCHIDS']
