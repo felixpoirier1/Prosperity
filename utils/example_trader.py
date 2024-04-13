@@ -18,7 +18,7 @@ class Logger:
         print(json.dumps([
             self.compress_state(state),
             self.compress_orders(orders),
-            conversions,
+            self.compress_observations(conversions),
             trader_data,
             self.logs,
         ], cls=ProsperityEncoder, separators=(",", ":")))
@@ -129,7 +129,7 @@ class Trader:
         except:
             logger.print("Error in deserializing trader data")
             pass
-
+        logger.print()
         result = {}
 
         for key, val in state.position.items():

@@ -1,0 +1,14 @@
+Notes Round 2
+
+ORCHIDS:
+
+- Influenced 
+
+- Sun lt 7h/day => decrease production by 4% per 10 minutes  
+
+- Humidity for orchids to grow between 60 to 80, if outside production will fall 2% per 5 humidity points
+
+- shipping costs
+
+- storage space 5000 0.1 seashell per orchid per ts
+
