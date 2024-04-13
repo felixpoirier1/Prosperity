@@ -81,6 +81,8 @@ class LogInterpreter:
                 break
 
         columns = self.file.readline().strip().split(";")
+        columns = ["bid_price_1", "bid_volume_1", "bid_price_2", "bid_volume_2", "bid_price_3", "bid_volume_3", "ask_price_1", "ask_volume_1", "ask_price_2", "ask_volume_2", "ask_price_3", "ask_volume_3", "mid_price", "profit_and_loss"]
+
         activities: Dict[Tuple[int,int], Dict]= {}
         for line in self.file:
             if line.strip() == self._LANDMARKS["activities"][1]:
@@ -88,7 +90,7 @@ class LogInterpreter:
             if not line.strip():
                 continue
             day, timestamp, product, *prices = line.strip().split(";")
-            activities[(int(day), int(timestamp))] = dict(zip(columns, [int(day), int(timestamp), product, *map(lambda x: None if x == "" else float(x), prices)]))
+            activities[(product, int(timestamp))] = dict(zip(columns, [*map(lambda x: None if x == "" else float(x), prices)]))
         if as_df:
             activities = pd.DataFrame.from_dict(activities, orient='index', columns=columns)
         return activities
