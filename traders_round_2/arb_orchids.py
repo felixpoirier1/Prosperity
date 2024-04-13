@@ -248,17 +248,7 @@ class Trader:
         orders += arb_orders
         convsersions += arb_conversions
         bpos += arb_conversions
-        '''
-        if apos == -100:
-            convsersions = 10
-            apos = -90
-            bpos = -90
 
-        if bpos == 100:
-            convsersions = -90
-            bpos = 10
-            apos = 10
-        '''
         if apos > -pos_lim:
             orders.append(Order(product, buy_pr+2, -100-apos))
 
