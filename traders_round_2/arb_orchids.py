@@ -100,7 +100,8 @@ class Trader:
         self.sf_cache = []
         self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20, 'ORCHIDS':100}
         self.sf_params = [0.08442609, 0.18264657, 0.7329293]
-        self.time = 0
+        self.prev_orch_buy = 0
+        self.prev_orch_sell = 0
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -225,7 +226,7 @@ class Trader:
 
         for bid in order_depth.buy_orders.items():
             if bid[0] - ap - tf - it > 0:
-                order_amt = min(bid[1], -cpos, 100+cpos)
+                order_amt = min(bid[1], -cpos)
                 if order_amt > 0:
                     orders.append(Order(product, bid[0], -order_amt))
                     cpos += order_amt
@@ -244,14 +245,25 @@ class Trader:
 
         arb_orders, arb_conversions = self.find_arbitrage(product, order_depth, observation)
 
-        apos -= arb_conversions
-
         orders += arb_orders
         convsersions += arb_conversions
+        bpos += arb_conversions
+        '''
+        if apos == -100:
+            convsersions = 10
+            apos = -90
+            bpos = -90
 
-        if apos != -50:
-            if self.time % 4 == 0:
-                orders.append(Order(product, buy_pr+2, -50))
+        if bpos == 100:
+            convsersions = -90
+            bpos = 10
+            apos = 10
+        '''
+        if apos > -pos_lim:
+            orders.append(Order(product, buy_pr+2, -100-apos))
+
+        #if bpos < pos_lim:
+        #    orders.append(Order(product, buy_pr, 100-bpos))
 
         return orders, convsersions
 
@@ -261,7 +273,6 @@ class Trader:
             return
         state_dict = jsonpickle.decode(json_string)
         for key, value in state_dict.items():
-            # logger.print(key, value)
             setattr(self, key, value)
     
     def serializeJson(self):
@@ -304,8 +315,6 @@ class Trader:
             elif product == 'ORCHIDS':
                 orchid_orders, conversions = self.computer_orchids_orders(product, order_depth, orchid_observation)
                 result[product] = orchid_orders
-
-        self.time += 1
 
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
