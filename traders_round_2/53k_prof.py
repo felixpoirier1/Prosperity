@@ -106,7 +106,6 @@ class Trader:
         self.hum_list = []
         self.sun_len = 3
         self.hum_len = 3
-        self.prev_orch_ask = 0
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -271,6 +270,7 @@ class Trader:
         orders += arb_orders
         convsersions += arb_conversions
         bpos += arb_conversions
+        apos -= arb_conversions
 
         '''
         deriv_sun_1, deriv_sun_2 = self.sun_list[1]-self.sun_list[0], self.sun_list[2]-self.sun_list[1]
@@ -300,22 +300,23 @@ class Trader:
             orders.append(Order(product, top_buy, sig_ask_vol))
             apos -= sig_ask_vol
         '''
-        sell_pr = top_buy+3
-        sell_vol = -pos_lim-apos
+        sell_pr_1 = top_buy+3
+        sell_pr_2 = top_buy+4
 
         if apos < 0:
-            diff = self.prev_orch_ask - top_buy
-            
             if top_buy+1 - ap - tf - it > 0:
-                convsersions -= apos + arb_conversions
-                orders.append(Order(product, top_buy+2, apos))
-                self.prev_orch_ask = top_buy+2
+                convsersions -= bpos
+                apos += convsersions
+                bpos -= convsersions
             else:
-                orders.append(Order(product, self.prev_orch_ask-1, -bpos))
+                orders.append(Order(product, top_buy+1, -bpos))
+
+        sell_vol_1 = int((-pos_lim-apos)*0.5)
+        sell_vol_2 = -pos_lim-apos-sell_vol_1
 
         if apos > -pos_lim:
-            orders.append(Order(product, sell_pr, sell_vol))
-            self.prev_orch_ask = sell_pr
+            orders.append(Order(product, sell_pr_1, sell_vol_1))
+            orders.append(Order(product, sell_pr_2, sell_vol_2))
 
         return orders, convsersions
 

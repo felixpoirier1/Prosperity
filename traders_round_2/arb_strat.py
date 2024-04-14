@@ -106,7 +106,7 @@ class Trader:
         self.hum_list = []
         self.sun_len = 3
         self.hum_len = 3
-        self.prev_orch_ask = 0
+        self.orch_ask = 0
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -258,19 +258,22 @@ class Trader:
         it = observation.importTariff
         tf = observation.transportFees
 
-        top_ask, top_buy = sorted(order_depth.sell_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
+        bottom_book, top_buy = sorted(order_depth.buy_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
         top_ask_vol, top_buy_vol = sorted(order_depth.sell_orders.items())[0][1], sorted(order_depth.buy_orders.items())[-1][1]
+
+        arb_val = top_buy - ap - tf - it
 
         self.update_orchid_lists(observation)
 
         if len(self.sun_list) != self.sun_len:
             return [], 0
 
-        arb_orders, arb_conversions = self.find_arbitrage(product, order_depth, observation)
+        # arb_orders, arb_conversions = self.find_arbitrage(product, order_depth, observation)
 
-        orders += arb_orders
-        convsersions += arb_conversions
-        bpos += arb_conversions
+        # orders += arb_orders
+        # convsersions += arb_conversions
+        # bpos += arb_conversions
+        # apos -= arb_conversions
 
         '''
         deriv_sun_1, deriv_sun_2 = self.sun_list[1]-self.sun_list[0], self.sun_list[2]-self.sun_list[1]
@@ -300,22 +303,37 @@ class Trader:
             orders.append(Order(product, top_buy, sig_ask_vol))
             apos -= sig_ask_vol
         '''
-        sell_pr = top_buy+3
-        sell_vol = -pos_lim-apos
+        sell_pr_1 = top_buy+2
+        sell_pr_2 = top_buy+3
 
         if apos < 0:
-            diff = self.prev_orch_ask - top_buy
-            
-            if top_buy+1 - ap - tf - it > 0:
-                convsersions -= apos + arb_conversions
-                orders.append(Order(product, top_buy+2, apos))
-                self.prev_orch_ask = top_buy+2
+            if arb_val-1 > 0:
+                convsersions -= bpos
+                apos += convsersions
+                bpos -= convsersions
+                sell_pr_1 = top_buy
+                sell_pr_2 = top_buy+1
+            elif arb_val > 0:
+                convsersions -= bpos
+                apos += convsersions
+                bpos -= convsersions
+                sell_pr_1 = top_buy+1
+                sell_pr_2 = top_buy+2
+            elif arb_val+1 > 0:
+                convsersions -= bpos
+                apos += convsersions
+                bpos -= convsersions
+                sell_pr_1 = top_buy+2
+                sell_pr_2 = top_buy+3
             else:
-                orders.append(Order(product, self.prev_orch_ask-1, -bpos))
+                orders.append(Order(product, top_buy+1, -bpos))
+
+        sell_vol_1 = int((-pos_lim-apos)*0.5)
+        sell_vol_2 = -pos_lim-apos-sell_vol_1
 
         if apos > -pos_lim:
-            orders.append(Order(product, sell_pr, sell_vol))
-            self.prev_orch_ask = sell_pr
+            orders.append(Order(product, sell_pr_1, sell_vol_1))
+            orders.append(Order(product, sell_pr_2, sell_vol_2))
 
         return orders, convsersions
 
