@@ -280,12 +280,8 @@ class Trader:
                 bpos -= convsersions
             else:
                 if self.arb == 'low':
-                    orders.append(Order(product, max(self.orch_ask-1, int((top_ask+top_buy)/2)), -apos))
-
-        if self.arb == 'low':
-            if top_ask-top_buy <= 4:
-                if top_ask-second_ask == 1:
-                    orders.append(Order(product, top_buy, pos_lim-apos))
+                    orders.append(Order(product, max(self.orch_ask-1, int((top_ask+top_buy)/2))+1, -bpos))
+                    bpos -= bpos
 
         if apos > -pos_lim:
             orders.append(Order(product, ask_pr, -pos_lim-apos))
