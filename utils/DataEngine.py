@@ -148,7 +148,6 @@ class LogInterpreter:
             if line.strip() == "}":
                 buff = buff.rstrip("\n") + ",\n"
         buff = buff [:-2]+ "\n]"
-        print(buff)
         sandbox_logs = json.loads(buff)
         if as_df:
             return pd.DataFrame(sandbox_logs)
