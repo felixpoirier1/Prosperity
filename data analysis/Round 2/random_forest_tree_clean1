@@ -1,25 +1,25 @@
 digraph Tree {
 node [shape=box, style="filled, rounded", color="black", fontname="helvetica"] ;
 edge [fontname="helvetica"] ;
-0 [label=<alt_sun &le; 27.638<br/>squared_error = 4197.645<br/>samples = 6746<br/>value = 1164.918>, fillcolor="#f0b68d"] ;
-1 [label=<abs_hum_avg_dist &le; 16.723<br/>squared_error = 1910.554<br/>samples = 1767<br/>value = 1096.055>, fillcolor="#fae9dc"] ;
+0 [label=<SUNLIGHT &le; 2763.759<br/>squared_error = 4204.862<br/>samples = 6747<br/>value = 1165.185>, fillcolor="#f0b68d"] ;
+1 [label=<hum_avg_dist &le; 16.648<br/>squared_error = 1891.141<br/>samples = 1773<br/>value = 1095.938>, fillcolor="#fbeadd"] ;
 0 -> 1 [labeldistance=2.5, labelangle=45, headlabel="True"] ;
-2 [label=<squared_error = 1772.408<br/>samples = 945<br/>value = 1122.061>, fillcolor="#f7d6be"] ;
+2 [label=<squared_error = 1781.217<br/>samples = 933<br/>value = 1122.719>, fillcolor="#f7d6be"] ;
 1 -> 2 ;
-3 [label=<squared_error = 390.883<br/>samples = 822<br/>value = 1066.069>, fillcolor="#ffffff"] ;
+3 [label=<squared_error = 392.979<br/>samples = 840<br/>value = 1066.944>, fillcolor="#ffffff"] ;
 1 -> 3 ;
-4 [label=<abs_hum_avg_dist &le; 20.696<br/>squared_error = 2750.317<br/>samples = 4979<br/>value = 1189.105>, fillcolor="#eca571"] ;
+4 [label=<hum_avg_dist &le; 20.699<br/>squared_error = 2690.121<br/>samples = 4974<br/>value = 1190.114>, fillcolor="#eca470"] ;
 0 -> 4 [labeldistance=2.5, labelangle=-45, headlabel="False"] ;
-5 [label=<SUNLIGHT &le; 4185.075<br/>squared_error = 378.072<br/>samples = 3995<br/>value = 1213.11>, fillcolor="#e99355"] ;
+5 [label=<SUNLIGHT &le; 4170.401<br/>squared_error = 373.805<br/>samples = 4022<br/>value = 1213.345>, fillcolor="#e99355"] ;
 4 -> 5 ;
-6 [label=<hum_avg &le; 87.235<br/>squared_error = 237.221<br/>samples = 3078<br/>value = 1206.025>, fillcolor="#ea985e"] ;
+6 [label=<hum_avg_dist &le; 17.221<br/>squared_error = 234.16<br/>samples = 3106<br/>value = 1206.236>, fillcolor="#ea985d"] ;
 5 -> 6 ;
-7 [label=<squared_error = 103.864<br/>samples = 1197<br/>value = 1217.211>, fillcolor="#e89051"] ;
+7 [label=<squared_error = 97.33<br/>samples = 1187<br/>value = 1217.433>, fillcolor="#e89050"] ;
 6 -> 7 ;
-8 [label=<squared_error = 194.57<br/>samples = 1881<br/>value = 1199.116>, fillcolor="#eb9d66"] ;
+8 [label=<squared_error = 193.122<br/>samples = 1919<br/>value = 1199.297>, fillcolor="#eb9d65"] ;
 6 -> 8 ;
-9 [label=<squared_error = 86.21<br/>samples = 917<br/>value = 1237.748>, fillcolor="#e58139"] ;
+9 [label=<squared_error = 89.046<br/>samples = 916<br/>value = 1237.614>, fillcolor="#e58139"] ;
 5 -> 9 ;
-10 [label=<squared_error = 409.083<br/>samples = 984<br/>value = 1090.536>, fillcolor="#fbede3"] ;
+10 [label=<squared_error = 390.894<br/>samples = 952<br/>value = 1090.547>, fillcolor="#fbeee4"] ;
 4 -> 10 ;
 }
