@@ -100,7 +100,11 @@ class Trader:
         self.sf_cache = []
         self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20, 'ORCHIDS':100}
         self.sf_params = [0.08442609, 0.18264657, 0.7329293]
-        self.time = 0
+
+        # orchids
+        self.orch_ask = 0
+        self.orch_bid = 0
+        self.arb = None
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -214,33 +218,80 @@ class Trader:
 
         return orders
 
-    def computer_orchids_orders(self, product, order_depth, observation):
+    def get_orchid_prices(self, added_val, top_ask, top_buy, second_ask):
+        mid_price = int((top_buy+top_ask)/2)
+        if added_val <= 1.168099856680999:
+            self.arb = 'low'
+        elif added_val >= 2.168099856680999:
+            self.arb = 'high'
+        else:
+            self.arb = 'mid'
+
+        if top_ask - top_buy > 4:
+            # Mean value of import - fees
+            if self.arb == 'low':
+                ask_pr = mid_price+1
+            elif self.arb == 'high':
+                ask_pr = mid_price-1
+            else:
+                ask_pr = mid_price
+        else:
+            if top_ask-top_buy == 4:
+                if self.arb == 'high':
+                    ask_pr = top_ask-2
+                elif self.arb == 'low':
+                    ask_pr = top_ask
+                else:
+                    ask_pr = top_ask-1
+            else:
+                if second_ask-top_ask == 1:
+                    ask_pr = top_ask-1
+                else:
+                    if self.arb == 'low':
+                        ask_pr = top_ask + 1
+                    else:
+                        ask_pr = top_ask
+            
+        return ask_pr
+    
+    def compute_orchids_orders(self, product, order_depth, observation):
         orders: list[Order] = []
         pos_lim = self.POSITION_LIMIT[product]
-        cpos = self.position[product]
+        apos = self.position[product]
+        bpos = self.position[product]
+        convsersions = 0
 
-        logger.print(observation.bidPrice,
-                     observation.askPrice,
-                     observation.transportFees, 
-                     observation.exportTariff,
-                     observation.importTariff,
-                     observation.sunlight,
-                     observation.humidity)
+        ap = observation.askPrice
+        imp = observation.importTariff
+        fee = observation.transportFees
 
-        ask_pr, buy_pr = sorted(order_depth.sell_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
+        top_ask, top_buy = sorted(order_depth.sell_orders.items())[0][0], sorted(order_depth.buy_orders.items())[-1][0]
+        second_ask = sorted(order_depth.sell_orders.items())[0][0]
+        ask_pr = self.get_orchid_prices(-imp-fee, top_ask, top_buy, second_ask)
 
-        # bid arb
-        if buy_pr - observation.askPrice - observation.transportFees - observation.importTariff > 0:
-            logger.print(f'Bid arb')
+        ask_arb_val = max(ask_pr, self.orch_ask)
 
-        # ask arb
-        if observation.bidPrice - ask_pr - observation.transportFees - observation.exportTariff > 0:
-            logger.print(f'Ask arb')
+        arb_val = ask_arb_val-ap-imp-fee
 
-        if self.time % 2:
-            orders.append(Order(product, buy_pr, -pos_lim-cpos))
+        if apos < 0:
+            if arb_val > 0:
+                convsersions -= bpos
+                apos += convsersions
+                bpos -= convsersions
+            else:
+                if self.arb == 'low':
+                    orders.append(Order(product, max(self.orch_ask-1, int((top_ask+top_buy)/2)), -apos))
 
-        return orders, 0
+        if self.arb == 'low':
+            if top_ask-top_buy <= 4:
+                if top_ask-second_ask == 1:
+                    orders.append(Order(product, top_buy, pos_lim-apos))
+
+        if apos > -pos_lim:
+            orders.append(Order(product, ask_pr, -pos_lim-apos))
+            self.orch_ask = ask_pr
+
+        return orders, convsersions
 
     def deserializeJson(self, json_string):
         if json_string == "":
@@ -248,7 +299,6 @@ class Trader:
             return
         state_dict = jsonpickle.decode(json_string)
         for key, value in state_dict.items():
-            # logger.print(key, value)
             setattr(self, key, value)
     
     def serializeJson(self):
@@ -266,7 +316,6 @@ class Trader:
             self.position[key] = val
 
         # To be changed later
-        conversions = -1
         trader_data = state.traderData
         conversion_observation = state.observations.conversionObservations
         orchid_observation = conversion_observation['ORCHIDS']
@@ -290,10 +339,8 @@ class Trader:
             elif product == 'STARFRUIT':
                 result[product] = self.compute_starfruit_orders(product, order_depth, next_price)
             elif product == 'ORCHIDS':
-                orchid_orders, conversions = self.computer_orchids_orders(product, order_depth, orchid_observation)
+                orchid_orders, conversions = self.compute_orchids_orders(product, order_depth, orchid_observation)
                 result[product] = orchid_orders
-
-        self.time += 1
 
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
