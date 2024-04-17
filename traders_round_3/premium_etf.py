@@ -278,124 +278,80 @@ class Trader:
             self.orch_ask = ask_pr
 
         return orders, convsersions
+    
+    def calc_vwap(self, buy_orders, sell_orders):
+        tot_vol = 0
+        vwap = 0
 
-    @staticmethod
-    def _compute_synthetic_prices(etf_components: Dict[Symbol, OrderDepth]) -> Tuple[int, int]:
-        # seperate order depths for each component and side
-        straw_top_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
-        straw_top_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())[0][0]
-        choco_top_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
-        choco_top_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())[0][0]
-        rose_top_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)[0][0]
-        rose_top_sell = sorted(etf_components["ROSES"].sell_orders.items())[0][0]
-
-        synth_bid = (6*straw_top_buy + 4*choco_top_buy + rose_top_buy)*1.005
-        synth_ask = (6*straw_top_sell + 4*choco_top_sell + rose_top_sell)*1.005
-
-        return synth_bid, synth_ask
+        for order in buy_orders:
+            tot_vol += order[1]
         
-    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask: int) -> Tuple[int, int]:
-        top_etf_sell = sorted(etf.sell_orders.items())[0][0]
-        top_etf_buy = sorted(etf.buy_orders.items(), reverse=True)[0][0]
+        for order in sell_orders:
+            tot_vol -= order[1]
+
+        for order in buy_orders:
+            vwap += order[0]*(order[1]/tot_vol)
+
+        for order in sell_orders:
+            vwap += order[0]*(-order[1]/tot_vol)
+
+        return vwap
+
+    def _compute_synthetic_vwap(self, etf_components: Dict[Symbol, OrderDepth]) -> Tuple[int, int]:
+        # seperate order depths for each component and side
+        straw_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)
+        straw_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())
+        choco_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)
+        choco_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())
+        rose_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)
+        rose_sell = sorted(etf_components["ROSES"].sell_orders.items())
+
+        straw_vwap = self.calc_vwap(straw_buy, straw_sell)
+        choco_vwap = self.calc_vwap(choco_buy, choco_sell)
+        rose_vwap = self.calc_vwap(rose_buy, rose_sell)
+        
+        synth_vwap = (6*straw_vwap + 4*choco_vwap + rose_vwap)*1.005
+
+        logger.print(straw_vwap, choco_vwap, rose_vwap)
+
+        return int(synth_vwap)
+        
+    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_vwap: int) -> str:
+        top_etf_sell = sorted(etf.sell_orders.items())
+        top_etf_buy = sorted(etf.buy_orders.items(), reverse=True)
+        etf_vwap = int(self.calc_vwap(top_etf_buy, top_etf_sell))
+
         side = None
 
-        if synth_bid - top_etf_sell > self.spread_std:
-            logger.print(f'Undervalued spread {synth_bid-top_etf_sell}')
+        spread = synth_vwap-etf_vwap
+
+        if spread > 0:
+            logger.print(f'Undervalued spread {spread}')
             side = "undervalued"
-        elif top_etf_buy - synth_ask > self.spread_std:
-            logger.print(f'Overvalued spread {top_etf_buy-synth_ask}')
+        elif spread < 0:
+            logger.print(f'Overvalued spread {spread}')
             side = "overvalued"
 
-        if (top_etf_buy-synth_ask < 0.5*self.spread_std):
-            if ((self.position['GIFT_BASKET'] < 0) or 
-                (self.position['ROSES'] > 0) or 
-                (self.position['CHOCOLATE'] > 0) or 
-                (self.position['STRAWBERRIES'] > 0)):
-                side = 'sell_off'
-        if (synth_bid-top_etf_sell < 0.5*self.spread_std):
-                if ((self.position['GIFT_BASKET'] > 0) or 
-                    (self.position['ROSES'] < 0) or 
-                    (self.position['CHOCOLATE'] < 0) or 
-                    (self.position['STRAWBERRIES'] < 0)):
-                    side = 'sell_off'
-        logger.print(f'Syn_bid - etf_sell is {synth_bid-top_etf_sell}')
-        logger.print(f'etf_buy - syn_sell is {top_etf_buy-synth_ask}')
         return side
         
     def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], side: str) -> dict[Symbol, list[Order]]:
-        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], "STRAWBERRIES": [], "CHOCOLATE":[], "ROSES": []}
+        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": []}
 
-        gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())
-        gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)
-        straw_top_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
-        straw_top_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
-        choco_top_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
-        choco_top_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
-        roses_top_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
-        roses_top_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
+        gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
+        gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+ 
+        gift_mid = int((gift_buy+gift_sell)/2)
 
         if side == 'undervalued':
-            if self.position['GIFT_BASKET'] != 58:
-                gpos = min(58-self.position['GIFT_BASKET'], -gift_sell[0][1])
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_sell[0][0], gpos))
-            else:
-                gpos = 1000000
-            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-348-self.position['STRAWBERRIES'], -gpos*6)))
-            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-232-self.position['CHOCOLATE'], -gpos*6)))
-            orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-58-self.position['ROSES'], -gpos*6)))
+            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_mid+1, self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
         elif side == 'overvalued':
-            if self.position['GIFT_BASKET'] != -58:
-                gpos = max(-58-self.position['GIFT_BASKET'], -gift_buy[0][1])
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_buy[0][0], gpos))
-            else:
-                gpos = -1000000
-            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(348-self.position['STRAWBERRIES'], -gpos*6)))
-            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, min(232-self.position['CHOCOLATE'], -gpos*4)))
-            orders["ROSES"].append(Order("ROSES", roses_top_sell, min(58-self.position['ROSES'], -gpos)))
-        elif side == 'sell_off':
-            if self.position["GIFT_BASKET"] > 0:
-                gpos = max(-58, -gift_buy[0][1], -self.position["GIFT_BASKET"])
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_buy[0][0], gpos))
-            elif self.position["GIFT_BASKET"] < 0:
-                gpos = min(58, -gift_sell[0][1], -self.position["GIFT_BASKET"])
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_sell[0][0], gpos))
-            else:
-                gpos = 0
-
-            if self.position["STRAWBERRIES"] > 0:
-                vol = max(-self.position["STRAWBERRIES"], -gpos*6) if gpos else -self.position["STRAWBERRIES"]
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.position["STRAWBERRIES"], vol)))
-            elif self.position["STRAWBERRIES"] < 0:
-                vol = min(-self.position["STRAWBERRIES"], -gpos*6) if gpos else -self.position["STRAWBERRIES"]
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(-self.position["STRAWBERRIES"], vol)))
-
-            if self.position["CHOCOLATE"] > 0:
-                vol = max(-self.position["CHOCOLATE"], -gpos*4) if gpos else -self.position["CHOCOLATE"]
-                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, vol))
-            elif self.position["CHOCOLATE"] < 0:
-                vol = max(-self.position["CHOCOLATE"], -gpos*4) if gpos else -self.position["CHOCOLATE"]
-                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, vol))
-            
-            if self.position["ROSES"] > 0:
-                vol = max(-self.position["ROSES"], -gpos) if gpos else -self.position["ROSES"]
-                orders["ROSES"].append(Order("ROSES", roses_top_buy, vol))
-            elif self.position["ROSES"] < 0:
-                vol = max(-self.position["ROSES"], -gpos) if gpos else -self.position["ROSES"]
-                orders["ROSES"].append(Order("ROSES", roses_top_sell, vol))
-        else:
-            curr_etf_pos = self.position['GIFT_BASKET']
-            if -self.position['ROSES'] != curr_etf_pos:
-                orders["ROSES"].append(Order("ROSES", roses_top_buy, -curr_etf_pos-self.position['ROSES']))
-            if -self.position['CHOCOLATE'] != curr_etf_pos*4:
-                orders["CHOCOLATE"].append(Order("CHOCOLATE", roses_top_buy, -curr_etf_pos*4-self.position['CHOCOLATE']))
-            if  -self.position['STRAWBERRIES'] != curr_etf_pos*6:
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", roses_top_buy, -curr_etf_pos*6-self.position['STRAWBERRIES']))
+            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_mid-1, -self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
 
         return orders
     
     def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
-        synth_bid, synth_ask = self._compute_synthetic_prices(etf_components)
-        side = self._assess_etf_arbitrage(etf, synth_bid, synth_ask)
+        synth_vwap = self._compute_synthetic_vwap(etf_components)
+        side = self._assess_etf_arbitrage(etf, synth_vwap)
 
         etf_orders = self._compute_etf_orders(order_depths, side)
 
