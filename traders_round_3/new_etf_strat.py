@@ -301,25 +301,25 @@ class Trader:
         top_etf_buy = sorted(etf.buy_orders.items(), reverse=True)[0][0]
         side = None
         
-        if synth_bid - top_etf_sell > self.spread_std*0.75:
+        if synth_bid - top_etf_sell > self.spread_std:
             self.under_trigger = True
             self.over_trigger = False
             logger.print(f'Undervalued spread {synth_bid-top_etf_sell}')
             side = "undervalued"
-        elif top_etf_buy - synth_ask > self.spread_std*0.75:
+        elif top_etf_buy - synth_ask > self.spread_std:
             self.over_trigger = True
             self.under_trigger = False
             logger.print(f'Overvalued spread {top_etf_buy-synth_ask}')
             side = "overvalued"
         else:
             if self.under_trigger:
-                if synth_bid - top_etf_sell < self.spread_std*0.25:
+                if synth_bid - top_etf_sell < 0.5*self.spread_std:
                     side = 'sell_off'
                     self.under_trigger = False
                 else:
                     side = 'undervalued'
             elif self.over_trigger:
-                if top_etf_buy - synth_ask < self.spread_std*0.25:
+                if top_etf_buy - synth_ask < 0.5*self.spread_std:
                     side = 'sell_off'
                     self.under_trigger = False
                 else:
@@ -330,46 +330,63 @@ class Trader:
     def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], side: str) -> dict[Symbol, list[Order]]:
         orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], "STRAWBERRIES": [], "CHOCOLATE":[], "ROSES": []}
 
-        gift_top_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
-        gift_top_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+        gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())
+        gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)
         straw_top_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
         straw_top_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
         choco_top_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
         choco_top_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
         roses_top_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
         roses_top_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
-        
-        qty = 2
+
         if side == 'undervalued':
-            orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell, min(self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET'], qty)))
-            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], -qty*6)))
-            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], -qty*4)))
-            orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-self.POSITION_LIMIT['ROSES']-self.position['ROSES'], -qty)))
+            if self.position['GIFT_BASKET'] != 58:
+                gpos = min(58-self.position['GIFT_BASKET'], -gift_sell[0][1])
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_sell[0][0], gpos))
+            else:
+                gpos = 1000000
+            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-348-self.position['STRAWBERRIES'], -gpos*6)))
+            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-233-self.position['ROSES'], -gpos*6)))
+            orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-58-self.position['ROSES'], -gpos*6)))
         elif side == 'overvalued':
-            orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy, max(-self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET'], -qty)))
-            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], qty*6)))
-            orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_sell, min(self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], qty*4)))
-            orders["ROSES"].append(Order("ROSES", roses_top_sell, min(self.POSITION_LIMIT['ROSES']-self.position['ROSES'], qty)))
+            if self.position['GIFT_BASKET'] != -58:
+                gpos = max(-58-self.position['GIFT_BASKET'], -gift_buy[0][1])
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_buy[0][0], gpos))
+            else:
+                gpos = -1000000
+            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(348-self.position['STRAWBERRIES'], -gpos*6)))
+            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, min(232-self.position['CHOCOLATE'], -gpos*4)))
+            orders["ROSES"].append(Order("ROSES", roses_top_sell, min(58-self.position['ROSES'], -gpos)))
         elif side == 'sell_off':
             if self.position["GIFT_BASKET"] > 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy, max(-self.position["GIFT_BASKET"], -qty)))
+                gpos = max(-58, -gift_buy[0][1], -self.position["GIFT_BASKET"])
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_buy[0][0], gpos))
             elif self.position["GIFT_BASKET"] < 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell, min(-self.position["GIFT_BASKET"], qty)))
+                gpos = min(58, -gift_sell[0][1], -self.position["GIFT_BASKET"])
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_sell[0][0], gpos))
+            else:
+                gpos = 0
 
             if self.position["STRAWBERRIES"] > 0:
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.position["STRAWBERRIES"], -qty*6)))
+                vol = max(-self.position["STRAWBERRIES"], -gpos*6) if gpos else -self.position["STRAWBERRIES"]
+                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.position["STRAWBERRIES"], vol)))
             elif self.position["STRAWBERRIES"] < 0:
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(-self.position["STRAWBERRIES"], qty*6)))
+                vol = min(-self.position["STRAWBERRIES"], -gpos*6) if gpos else -self.position["STRAWBERRIES"]
+                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(-self.position["STRAWBERRIES"], vol)))
 
             if self.position["CHOCOLATE"] > 0:
-                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-self.position["CHOCOLATE"], -qty*4)))
+                vol = max(-self.position["CHOCOLATE"], -gpos*4) if gpos else -self.position["CHOCOLATE"]
+                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, vol))
             elif self.position["CHOCOLATE"] < 0:
-                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, min(-self.position["CHOCOLATE"], qty*4)))
+                vol = max(-self.position["CHOCOLATE"], -gpos*4) if gpos else -self.position["CHOCOLATE"]
+                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, vol))
             
             if self.position["ROSES"] > 0:
-                orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-self.position["ROSES"], -qty)))
+                vol = max(-self.position["ROSES"], -gpos) if gpos else -self.position["ROSES"]
+                orders["ROSES"].append(Order("ROSES", roses_top_buy, vol))
             elif self.position["ROSES"] < 0:
-                orders["ROSES"].append(Order("ROSES", roses_top_sell, min(-self.position["ROSES"], qty)))
+                vol = max(-self.position["ROSES"], -gpos) if gpos else -self.position["ROSES"]
+                orders["ROSES"].append(Order("ROSES", roses_top_sell, vol))
 
         return orders
     
