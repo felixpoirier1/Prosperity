@@ -108,7 +108,9 @@ class Trader:
 
         # etf
         self.etf_norm_const = 1000 #the lower the value, the more liquidity taking is prioritized over market making
-        self.i = 0
+        self.spread_std = 75
+        self.under_trigger = False
+        self.over_trigger = False
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -280,186 +282,102 @@ class Trader:
         return orders, convsersions
 
     @staticmethod
-    def _compute_synthetic_etf(etf_components: Dict[Symbol, OrderDepth]) -> OrderDepth:
+    def _compute_synthetic_prices(etf_components: Dict[Symbol, OrderDepth]) -> Tuple[int, int]:
         # seperate order depths for each component and side
-        strawberries_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)
-        strawberries_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())
-        chocolate_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)
-        chocolate_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())
-        roses_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)
-        roses_sell = sorted(etf_components["ROSES"].sell_orders.items())
+        straw_top_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
+        straw_top_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())[0][0]
+        choco_top_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
+        choco_top_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())[0][0]
+        rose_top_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)[0][0]
+        rose_top_sell = sorted(etf_components["ROSES"].sell_orders.items())[0][0]
 
-        synth_book: OrderDepth = OrderDepth()
+        synth_bid = 6*straw_top_buy + 4*choco_top_buy + rose_top_buy + 380
+        synth_ask = 6*straw_top_sell + 4*choco_top_sell + rose_top_sell + 380
 
-        #compute bid side of synth book
-        while (strawberries_buy and chocolate_buy and roses_buy):
-            # first level is always equivalent to product with lowest quantity
-            min_qty = min(strawberries_buy[0][1], chocolate_buy[0][1], roses_buy[0][1])
-            price = 6*strawberries_buy[0][0] + 4*chocolate_buy[0][0] + roses_buy[0][0] + 400
-            if strawberries_buy[0][1] == min_qty:
-                strawberries_buy.pop(0)
-            else:
-                vol = strawberries_buy[0][1]-min_qty
-                strawberries_buy[0] = (strawberries_buy[0][0], vol)
-            if chocolate_buy[0][1] == min_qty:
-                chocolate_buy.pop(0)
-            else:
-                vol = chocolate_buy[0][1]-min_qty
-                chocolate_buy[0] = (chocolate_buy[0][0], vol)
-            if roses_buy[0][1] == min_qty:
-                roses_buy.pop(0)
-            else:
-                vol = roses_buy[0][1]-min_qty
-                roses_buy[0] = (roses_buy[0][0], vol)
-            logger.print(f'Buy price {price}')
-            synth_book.buy_orders[price] = min_qty
-
-        #compute ask side of synth book
-        while (strawberries_sell and chocolate_sell and roses_sell):
-            max_neg_qty = max(strawberries_sell[0][1], chocolate_sell[0][1], roses_sell[0][1])
-            price = 6*strawberries_sell[0][0] + 4*chocolate_sell[0][0] + roses_sell[0][0] + 400
-            if strawberries_sell[0][1] == max_neg_qty:
-                strawberries_sell.pop(0)
-            else:
-                vol = strawberries_sell[0][1]-max_neg_qty
-                strawberries_sell[0] = (strawberries_sell[0][0], vol)
-            if chocolate_sell[0][1] == max_neg_qty:
-                chocolate_sell.pop(0)
-            else:
-                vol = chocolate_sell[0][1]-max_neg_qty
-                chocolate_sell[0] = (chocolate_sell[0][0], vol)
-            if roses_sell[0][1] == max_neg_qty:
-                roses_sell.pop(0)
-            else:
-                vol = roses_sell[0][1]-max_neg_qty
-                roses_sell[0] = (roses_sell[0][0], vol)
-            logger.print(f'Sell price {price}')
-            synth_book.sell_orders[price] = max_neg_qty
-
-        return synth_book
-    
-    def _func_mm_lt_tradeoff(self, spread: float, net_position: int) -> float:
-        return np.exp(-((net_position**2 + spread**2)/self.etf_norm_const))
-
-    def _func_qty_to_trade(self, spread: float) -> float:
-        return 1 if spread > 80 else np.exp(spread*0.008664) - 1
+        return synth_bid, synth_ask
         
-    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_etf: OrderDepth) -> Tuple[int, int]:
-
-        side = None
-        etf_pos = self.position['GIFT_BASKET']
+    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask: int) -> Tuple[int, int]:
         top_etf_sell = sorted(etf.sell_orders.items())[0][0]
-        top_synth_buy = sorted(synth_etf.buy_orders.items(), reverse=True)[0][0]
         top_etf_buy = sorted(etf.buy_orders.items(), reverse=True)[0][0]
-        top_synth_sell = sorted(synth_etf.sell_orders.items())[0][0]
-
-        qty_to_mm, qty_to_lt = 0, 0
+        side = None
         
-        # when the ETF is trading at a discount
-        if top_etf_sell < top_synth_buy:
+        if synth_bid - top_etf_sell > self.spread_std*0.75:
+            self.under_trigger = True
+            self.over_trigger = False
+            logger.print(f'Undervalued spread {synth_bid-top_etf_sell}')
             side = "undervalued"
-            # 1. Assess share of MM vs LT
-            if etf_pos <= 0:
-                mm_pct = 1
-            else:
-                mm_pct = self._func_mm_lt_tradeoff(top_synth_buy-top_etf_sell, etf_pos)
-            
-            # 2. Compute the optimal qty to buy & sell (should we slowly build up the position or go all in?)
-            # this could possibly be improved
-
-            #maybe we should be fine with diverging from the spread a bit
-            position_lim_min_under = min(
-                    ((self.POSITION_LIMIT["STRAWBERRIES"]+self.position["STRAWBERRIES"])//6, 
-                    (self.POSITION_LIMIT["CHOCOLATE"]+self.position["CHOCOLATE"])//4, 
-                    (self.POSITION_LIMIT["ROSES"]+self.position["ROSES"]), 
-                    (self.POSITION_LIMIT["GIFT_BASKET"]-self.position["GIFT_BASKET"])
-                    ))
-            spread_qty_min_under = int(position_lim_min_under * self._func_qty_to_trade(top_synth_buy-top_etf_sell))
-            actual_book_min_under = min(-sorted(etf.sell_orders.items())[0][1], sorted(synth_etf.buy_orders.items(), reverse=True)[0][1])
-
-            qty_to_buy = min(spread_qty_min_under, actual_book_min_under)
-            qty_to_mm = int(mm_pct * qty_to_buy)
-            qty_to_lt = qty_to_buy - qty_to_mm
-
-        # when the ETF is trading at a premium
-        elif top_etf_buy > top_synth_sell:
+        elif top_etf_buy - synth_ask > self.spread_std*0.75:
+            self.over_trigger = True
+            self.under_trigger = False
+            logger.print(f'Overvalued spread {top_etf_buy-synth_ask}')
             side = "overvalued"
-            # 1. Assess share of MM vs LT
-            if etf_pos >= 0:
-                mm_pct = 1
-            else:
-                mm_pct = self._func_mm_lt_tradeoff(top_etf_buy-top_synth_sell, etf_pos)
-            
-            # 2. Compute the optimal qty to buy & sell (should we slowly build up the position or go all in?)
-            
-            #maybe we should be fine with diverging from the spread a bit
-            position_lim_min_over = min(
-                    ((self.POSITION_LIMIT["STRAWBERRIES"]-self.position["STRAWBERRIES"])//6, 
-                    (self.POSITION_LIMIT["CHOCOLATE"]-self.position["CHOCOLATE"])//4, 
-                    (self.POSITION_LIMIT["ROSES"]-self.position["ROSES"]), 
-                    (self.POSITION_LIMIT["GIFT_BASKET"]+self.position["GIFT_BASKET"])
-                    ))
-
-            spread_qty_min_over = int(position_lim_min_over * self._func_qty_to_trade(top_etf_buy-top_synth_sell))
-            actual_book_min_over = min(sorted(etf.buy_orders.items(), reverse=True)[0][1], -sorted(synth_etf.sell_orders.items())[0][1])
-            
-            qty_to_sell = min(spread_qty_min_over, actual_book_min_over)
-            qty_to_mm = int(mm_pct * qty_to_sell)
-            qty_to_lt = qty_to_sell - qty_to_mm
+        else:
+            if self.under_trigger:
+                if synth_bid - top_etf_sell < self.spread_std*0.25:
+                    side = 'sell_off'
+                    self.under_trigger = False
+                else:
+                    side = 'undervalued'
+            elif self.over_trigger:
+                if top_etf_buy - synth_ask < self.spread_std*0.25:
+                    side = 'sell_off'
+                    self.under_trigger = False
+                else:
+                    side = 'overvalued'
         
-        return qty_to_mm, qty_to_lt, side
+        return side
         
-    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], qty_to_mm: int, qty_to_lt: int, side: str) -> dict[Symbol, list[Order]]:
+    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], side: str) -> dict[Symbol, list[Order]]:
         orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], "STRAWBERRIES": [], "CHOCOLATE":[], "ROSES": []}
 
         gift_top_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_top_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
-        straw_top_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
-        straw_top_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
-        choco_top_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
-        choco_top_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
-        roses_top_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
-        roses_top_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+        straw_top_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
+        straw_top_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
+        choco_top_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
+        choco_top_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
+        roses_top_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
+        roses_top_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
         
+        qty = 2
         if side == 'undervalued':
-            # marekt making orders
-            if qty_to_mm > 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell-1, qty_to_mm))
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy+1, -6*qty_to_mm))
-                orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_buy+1, -4*qty_to_mm))
-                orders["ROSES"].append(Order("ROSES", roses_top_buy+1, -qty_to_mm))
-
-            # liquidity taking orders
-            if qty_to_lt > 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell, qty_to_lt))
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, -6*qty_to_lt))
-                orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_buy, -4*qty_to_lt))
-                orders["ROSES"].append(Order("ROSES", roses_top_buy, -qty_to_lt))
+            orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell, min(self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET'], qty)))
+            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], -qty*6)))
+            orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], -qty*4)))
+            orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-self.POSITION_LIMIT['ROSES']-self.position['ROSES'], -qty)))
         elif side == 'overvalued':
-            # marekt making orders
-            if qty_to_mm > 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy+1, -qty_to_mm))
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell-1, 6*qty_to_mm))
-                orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_sell-1, 4*qty_to_mm))
-                orders["ROSES"].append(Order("ROSES", roses_top_sell-1, qty_to_mm))
+            orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy, max(-self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET'], -qty)))
+            orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], qty*6)))
+            orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_sell, min(self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], qty*4)))
+            orders["ROSES"].append(Order("ROSES", roses_top_sell, min(self.POSITION_LIMIT['ROSES']-self.position['ROSES'], qty)))
+        elif side == 'sell_off':
+            if self.position["GIFT_BASKET"] > 0:
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy, max(-self.position["GIFT_BASKET"], -qty)))
+            elif self.position["GIFT_BASKET"] < 0:
+                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_sell, min(-self.position["GIFT_BASKET"], qty)))
 
-            # liquidity taking orders
-            if qty_to_mm > 0:
-                orders["GIFT_BASKET"].append(Order("GIFT_BASKET", gift_top_buy, -qty_to_lt))
-                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, 6*qty_to_lt))
-                orders["CHOCOLATE"].append(Order("CHOCOLATE",choco_top_sell, 4*qty_to_lt))
-                orders["ROSES"].append(Order("ROSES", roses_top_sell, qty_to_lt))
+            if self.position["STRAWBERRIES"] > 0:
+                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_buy, max(-self.position["STRAWBERRIES"], -qty*6)))
+            elif self.position["STRAWBERRIES"] < 0:
+                orders["STRAWBERRIES"].append(Order("STRAWBERRIES", straw_top_sell, min(-self.position["STRAWBERRIES"], qty*6)))
+
+            if self.position["CHOCOLATE"] > 0:
+                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_buy, max(-self.position["CHOCOLATE"], -qty*4)))
+            elif self.position["CHOCOLATE"] < 0:
+                orders["CHOCOLATE"].append(Order("CHOCOLATE", choco_top_sell, min(-self.position["CHOCOLATE"], qty*4)))
+            
+            if self.position["ROSES"] > 0:
+                orders["ROSES"].append(Order("ROSES", roses_top_buy, max(-self.position["ROSES"], -qty)))
+            elif self.position["ROSES"] < 0:
+                orders["ROSES"].append(Order("ROSES", roses_top_sell, min(-self.position["ROSES"], qty)))
 
         return orders
     
     def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
-        synth_book = self._compute_synthetic_etf(etf_components)
-        qty_to_mm, qty_to_lt, side = self._assess_etf_arbitrage(etf, synth_book)
-        logger.print(f'Our quantities are {qty_to_mm}, {qty_to_lt} with side {side}')
-        if qty_to_mm == 0 and qty_to_lt == 0:
-            return {}
-        # compute the orders for both market making and liquidity taking
-        etf_orders = self._compute_etf_orders(order_depths, qty_to_mm, qty_to_lt, side)
+        synth_bid, synth_ask = self._compute_synthetic_prices(etf_components)
+        side = self._assess_etf_arbitrage(etf, synth_bid, synth_ask)
+
+        etf_orders = self._compute_etf_orders(order_depths, side)
 
         return etf_orders
 
@@ -517,8 +435,8 @@ class Trader:
                 etf_components[product] = order_depth
 
         etf_orders = self.compute_etf_orders(state.order_depths, etf, etf_components)
-        if etf_orders:
-            for prod, ords in etf_orders.items():
+        for prod, ords in etf_orders.items():
+            if ords:
                 result[prod] = ords
 
         trader_data = self.serializeJson()
