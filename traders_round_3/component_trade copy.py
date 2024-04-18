@@ -394,7 +394,7 @@ class Trader:
                     vol = min(self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], gift_buy_vol*4)
                     orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, vol))
             else:
-                vol = -self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE']
+                vol = max(-self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'], -gift_buy_vol*4)
                 if vol != 0:
                     orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, vol))
 
@@ -406,7 +406,7 @@ class Trader:
                     vol = min(self.POSITION_LIMIT['ROSES']-self.position['ROSES'], gift_buy_vol)
                     orders['ROSES'].append(Order('ROSES', roses_sell, vol))
             else:
-                vol = -self.POSITION_LIMIT['ROSES']-self.position['ROSES']
+                vol = max(-self.POSITION_LIMIT['ROSES']-self.position['ROSES'], -gift_buy_vol)
                 if vol != 0:
                     orders['ROSES'].append(Order('ROSES', roses_buy, vol))
 
@@ -418,7 +418,7 @@ class Trader:
                     vol = min(self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], gift_buy_vol*6)
                     orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, vol))
             else:
-                vol = -self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES']
+                vol = max(-self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'], -gift_buy_vol*6)
                 if vol != 0:
                     orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, vol))
 

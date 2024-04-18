@@ -109,6 +109,9 @@ class Trader:
         # etf
         self.etf_norm_const = 1000 #the lower the value, the more liquidity taking is prioritized over market making
         self.spread_std = 75
+        self.choco_pct = 0
+        self.roses_pct = 0
+        self.straw_pct = 0
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -289,9 +292,11 @@ class Trader:
         
         synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
+        synth_base_mid = (synth_bid+synth_ask)/2
 
-        logger.print(f'synth bid {synth_bid}')
-        logger.print(f'synth ask {synth_ask}')
+        self.choco_pct = (3*(straw_buy+straw_sell))/synth_base_mid
+        self.roses_pct = ((rose_buy+rose_sell)/2)/synth_base_mid
+        self.straw_pct = (2*(choco_buy+choco_sell))/synth_base_mid
 
         return int(synth_bid), int(synth_ask)
         
@@ -313,7 +318,7 @@ class Trader:
         return side
         
     def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], side: str) -> dict[Symbol, list[Order]]:
-        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[]}
+        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[], 'STRAWBERRIES': [], 'ROSES':[]}
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
@@ -322,7 +327,7 @@ class Trader:
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
         elif side == 'overvalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
-
+ 
         return orders
     
     def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
