@@ -278,58 +278,36 @@ class Trader:
             self.orch_ask = ask_pr
 
         return orders, convsersions
-    
-    def calc_vwap(self, buy_orders, sell_orders):
-        tot_vol = 0
-        vwap = 0
 
-        for order in buy_orders:
-            tot_vol += order[1]
+    def _compute_synthetic_prices(self, etf_components: Dict[Symbol, OrderDepth]) -> Tuple[int, int]:
+        straw_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
+        straw_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())[0][0]
+        choco_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
+        choco_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())[0][0]
+        rose_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)[0][0]
+        rose_sell = sorted(etf_components["ROSES"].sell_orders.items())[0][0]
         
-        for order in sell_orders:
-            tot_vol -= order[1]
+        synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
+        synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
 
-        for order in buy_orders:
-            vwap += order[0]*(order[1]/tot_vol)
+        logger.print(f'synth bid {synth_bid}')
+        logger.print(f'synth ask {synth_ask}')
 
-        for order in sell_orders:
-            vwap += order[0]*(-order[1]/tot_vol)
-
-        return vwap
-
-    def _compute_synthetic_vwap(self, etf_components: Dict[Symbol, OrderDepth]) -> Tuple[int, int]:
-        # seperate order depths for each component and side
-        straw_buy = sorted(etf_components["STRAWBERRIES"].buy_orders.items(), reverse=True)
-        straw_sell = sorted(etf_components["STRAWBERRIES"].sell_orders.items())
-        choco_buy = sorted(etf_components["CHOCOLATE"].buy_orders.items(), reverse=True)
-        choco_sell = sorted(etf_components["CHOCOLATE"].sell_orders.items())
-        rose_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)
-        rose_sell = sorted(etf_components["ROSES"].sell_orders.items())
-
-        straw_vwap = self.calc_vwap(straw_buy, straw_sell)
-        choco_vwap = self.calc_vwap(choco_buy, choco_sell)
-        rose_vwap = self.calc_vwap(rose_buy, rose_sell)
+        return int(synth_bid), int(synth_ask)
         
-        synth_vwap = (6*straw_vwap + 4*choco_vwap + rose_vwap)*1.005
+    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask) -> str:
+        etf_ask = sorted(etf.sell_orders.items())[0][0]
+        etf_bid = sorted(etf.buy_orders.items(), reverse=True)[0][0]
 
-        logger.print(straw_vwap, choco_vwap, rose_vwap)
-
-        return int(synth_vwap)
-        
-    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_vwap: int) -> str:
-        top_etf_sell = sorted(etf.sell_orders.items())
-        top_etf_buy = sorted(etf.buy_orders.items(), reverse=True)
-        etf_vwap = int(self.calc_vwap(top_etf_buy, top_etf_sell))
-        logger.print(etf_vwap)
         side = None
 
-        spread = synth_vwap-etf_vwap
+        logger.print(f'ea, eb, sa, sb {etf_ask, etf_bid, synth_ask, synth_bid}')
 
-        if spread > 0:
-            logger.print(f'Undervalued spread {spread}')
+        if synth_bid-etf_ask > 0:
+            logger.print(f'Undervalued spread {synth_bid-etf_ask}')
             side = "undervalued"
-        elif spread < 0:
-            logger.print(f'Overvalued spread {spread}')
+        elif etf_bid-synth_ask > 0:
+            logger.print(f'Overvalued spread {etf_bid-synth_ask}')
             side = "overvalued"
 
         return side
@@ -339,8 +317,6 @@ class Trader:
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
- 
-        gift_mid = int((gift_buy+gift_sell)/2)
 
         if side == 'undervalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
@@ -350,8 +326,8 @@ class Trader:
         return orders
     
     def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
-        synth_vwap = self._compute_synthetic_vwap(etf_components)
-        side = self._assess_etf_arbitrage(etf, synth_vwap)
+        synth_bid, synth_ask = self._compute_synthetic_prices(etf_components)
+        side = self._assess_etf_arbitrage(etf, synth_bid, synth_ask)
 
         etf_orders = self._compute_etf_orders(order_depths, side)
 
