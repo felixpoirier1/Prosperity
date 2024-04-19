@@ -110,8 +110,7 @@ class Trader:
 
         # etf
         self.etf_norm_const = 1000 #the lower the value, the more liquidity taking is prioritized over market making
-        self.spread_std = 75
-        self.basket_std = 330
+        self.basket_std = 75
 
         self.cont_buy_basket_unfill = 0
         self.cont_sell_basket_unfill = 0
@@ -316,8 +315,8 @@ class Trader:
                 if vol_sell[p] >= self.POSITION_LIMIT[p] / 10:
                     break
 
-        res_buy = mid_price['GIFT_BASKET'] - mid_price['STRAWBERRIES'] * 6 - mid_price['CHOCOLATE'] * 4 - mid_price['ROSES'] - 385
-        res_sell = mid_price['GIFT_BASKET'] - mid_price['STRAWBERRIES'] * 6 - mid_price['CHOCOLATE'] * 4 - mid_price['ROSES'] - 385
+        res_buy = mid_price['GIFT_BASKET'] - mid_price['STRAWBERRIES'] * 6 - mid_price['CHOCOLATE'] * 4 - mid_price['ROSES'] - 380
+        res_sell = mid_price['GIFT_BASKET'] - mid_price['STRAWBERRIES'] * 6 - mid_price['CHOCOLATE'] * 4 - mid_price['ROSES'] - 380
 
         trade_at = self.basket_std * 0.5
         close_at = self.basket_std * (-1000)

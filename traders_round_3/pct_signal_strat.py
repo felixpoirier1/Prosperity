@@ -110,6 +110,17 @@ class Trader:
         self.etf_norm_const = 1000 #the lower the value, the more liquidity taking is prioritized over market making
         self.spread_std = 75
 
+        self.choco_pct = 0
+        self.choco_avg = 0
+
+        self.straw_pct = 0
+        self.straw_avg = 0
+
+        self.roses_pct = 0
+        self.roses_avg = 0
+
+        self.count = 0
+
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
         best_buy_pr = sorted(order_depth.buy_orders.items())[0][0]
@@ -290,6 +301,25 @@ class Trader:
         synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
 
+        synth_buy = (6*straw_buy + 4*choco_buy + rose_buy)
+        synth_sell = (6*straw_sell + 4*choco_sell + rose_sell)
+
+        synth_base_mid = (synth_buy+synth_sell)/2
+
+        self.choco_pct = (2*(choco_buy+choco_sell))/synth_base_mid
+        new_choco_avg = ((self.choco_avg * self.count) + self.choco_pct)
+
+        self.straw_pct = (3*(straw_buy+straw_sell))/synth_base_mid
+        new_straw_avg = ((self.straw_avg * self.count) + self.straw_pct)
+
+        self.roses_pct = ((rose_buy+rose_sell)/2)/synth_base_mid
+        new_roses_avg = ((self.roses_avg * self.count) + self.roses_pct)
+
+        self.count += 1
+        self.choco_avg = new_choco_avg/self.count
+        self.straw_avg = new_straw_avg/self.count
+        self.roses_avg = new_roses_avg/self.count
+
         return int(synth_bid), int(synth_ask)
         
     def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask) -> str:
@@ -298,13 +328,9 @@ class Trader:
 
         side = None
 
-        logger.print(f'ea, eb, sa, sb {etf_ask, etf_bid, synth_ask, synth_bid}')
-
         if synth_bid-etf_ask > 0:
-            logger.print(f'Undervalued spread {synth_bid-etf_ask}')
             side = "undervalued"
         elif etf_bid-synth_ask > 0:
-            logger.print(f'Overvalued spread {etf_bid-synth_ask}')
             side = "overvalued"
 
         return side
@@ -314,6 +340,10 @@ class Trader:
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+        choco_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
+        choco_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
+        straw_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
+        straw_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
         roses_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
         roses_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
 
@@ -322,10 +352,15 @@ class Trader:
         elif side == 'overvalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
 
-        #if side == 'overvalued':
-        #    orders['ROSES'].append(Order('ROSES', roses_sell, self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
-        #if side == 'undervalued':
-        #    orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
+        if self.choco_avg > self.choco_pct:
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE']))
+        elif self.choco_avg < self.choco_pct:
+            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE']))
+
+        if self.roses_avg > self.roses_pct:
+            orders['ROSES'].append(Order('ROSES', roses_sell, self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
+        elif self.roses_avg < self.roses_pct:
+            orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
 
         return orders
     
