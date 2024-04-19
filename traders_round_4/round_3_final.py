@@ -292,15 +292,11 @@ class Trader:
         
         synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
+        synth_base_mid = (synth_bid+synth_ask)/2
 
-        synth_buy = (6*straw_buy + 4*choco_buy + rose_buy)
-        synth_sell = (6*straw_sell + 4*choco_sell + rose_sell)
-
-        synth_base_mid = (synth_buy+synth_sell)/2
-
-        self.choco_pct = (2*(choco_buy+choco_sell))/synth_base_mid
+        self.choco_pct = (3*(straw_buy+straw_sell))/synth_base_mid
         self.roses_pct = ((rose_buy+rose_sell)/2)/synth_base_mid
-        self.straw_pct = (3*(straw_buy+straw_sell))/synth_base_mid
+        self.straw_pct = (2*(choco_buy+choco_sell))/synth_base_mid
 
         return int(synth_bid), int(synth_ask)
         
@@ -322,50 +318,12 @@ class Trader:
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
-        choco_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
-        choco_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
-        straw_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
-        straw_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
-        roses_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
-        roses_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
 
         if side == 'undervalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
         elif side == 'overvalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
-    
-        if self.choco_pct < 0.45017418407111287-0.002248637674759731*0.5:
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE']))
-        elif self.choco_pct > 0.45017418407111287+0.002248637674759731*0.5:
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE']))
-        else:
-            if self.position['CHOCOLATE'] > 0 and self.choco_pct < 0.45017418407111287:
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -self.position['CHOCOLATE']))
-            elif self.position['CHOCOLATE'] < 0 and self.choco_pct > 0.45017418407111287:
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, -self.position['CHOCOLATE']))
-
-        '''
-        if self.straw_pct < 0.3435565437395282-0.0026946263295697507*0.5:
-            orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES']))
-        elif self.straw_pct > 0.3435565437395282+0.0026946263295697507*0.5:
-            orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES']))
-        else:
-            if self.position['STRAWBERRIES'] > 0 and self.straw_pct < 0.3435565437395282:
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -self.position['STRAWBERRIES']))
-            elif self.position['STRAWBERRIES'] < 0 and self.straw_pct > 0.3435565437395282:
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, -self.position['STRAWBERRIES']))
-        '''
-
-        if self.roses_pct < 0.2054447159046391-0.0005670946487363606*0.5:
-            orders['ROSES'].append(Order('ROSES', roses_sell, self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
-        elif self.roses_pct > 0.2054447159046391+0.0005670946487363606*0.5:
-            orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
-        else:
-            if self.position['ROSES'] > 0 and self.roses_pct < 0.2054447159046391:
-                orders['ROSES'].append(Order('ROSES', roses_buy, -self.position['ROSES']))
-            elif self.position['ROSES'] < 0 and self.roses_pct > 0.2054447159046391:
-                orders['ROSES'].append(Order('ROSES', roses_sell, -self.position['ROSES']))
-                
+ 
         return orders
     
     def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
