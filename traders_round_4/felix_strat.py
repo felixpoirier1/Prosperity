@@ -8,6 +8,7 @@ from scipy.stats import norm
 from scipy.optimize import fsolve
 import copy
 import operator
+import math
 
 
 class Logger:
@@ -361,11 +362,6 @@ class Trader:
         mid_coco_coup = (sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0]+sorted(coconuts_coupon_depth.sell_orders.items())[0][0])/2
         imp_vol = self._compute_implied_vol(mid_coco, mid_coco_coup)
         self._coco_hist_imp_vols.append(imp_vol)
-
-
-
-        
-
 
     def deserializeJson(self, json_string):
         if json_string == "":
