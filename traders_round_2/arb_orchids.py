@@ -309,3 +309,4 @@ class Trader:
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
+    

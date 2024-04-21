@@ -290,9 +290,6 @@ class Trader:
         synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
 
-        logger.print(f'synth bid {synth_bid}')
-        logger.print(f'synth ask {synth_ask}')
-
         return int(synth_bid), int(synth_ask)
         
     def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask) -> str:
@@ -313,15 +310,22 @@ class Trader:
         return side
         
     def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], side: str) -> dict[Symbol, list[Order]]:
-        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[]}
+        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[], 'STRAWBERRIES': [], 'ROSES':[]}
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+        roses_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
+        roses_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
 
         if side == 'undervalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
         elif side == 'overvalued':
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -self.POSITION_LIMIT['GIFT_BASKET']-self.position['GIFT_BASKET']))
+
+        #if side == 'overvalued':
+        #    orders['ROSES'].append(Order('ROSES', roses_sell, self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
+        #if side == 'undervalued':
+        #    orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
 
         return orders
     
