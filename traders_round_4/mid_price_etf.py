@@ -112,6 +112,9 @@ class Trader:
         self.synth_premium = 375
         self.side = None
 
+        # option
+        self.vol_lst = []
+
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
         best_buy_pr = sorted(order_depth.buy_orders.items())[0][0]
@@ -282,9 +285,9 @@ class Trader:
             cost_buy = ap - fee + imp
             cost_sell = bp - fee - exp
 
-            if cost_buy < top_buy and apos > self.POSITION_LIMIT['ORCHIDS']:
-                quantity_to_sell = max(-self.POSITION_LIMIT['ORCHIDS'] - apos, -50)
-                orders.append(Order('ORCHIDS', top_buy, quantity_to_sell))
+            if cost_buy < top_buy:
+                quantity_to_sell = min(self.POSITION_LIMIT['ORCHIDS'] - apos, 50)
+                orders.append(Order('ORCHIDS', top_buy, -quantity_to_sell))
                 convsersions = quantity_to_sell
 
             if cost_sell > top_ask:
