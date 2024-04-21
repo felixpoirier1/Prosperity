@@ -108,7 +108,6 @@ class Trader:
         self.arb = None
 
         # etf
-        self.etf_norm_const = 1000 #the lower the value, the more liquidity taking is prioritized over market making
         self.spread_std = 75
         self.synth_premium = 375
         self.side = None
@@ -283,15 +282,15 @@ class Trader:
             cost_buy = ap - fee + imp
             cost_sell = bp - fee - exp
 
-            if cost_buy < top_buy and bpos < self.POSITION_LIMIT['ORCHIDS']:
-                quantity_to_buy = min(self.POSITION_LIMIT['ORCHIDS'] - bpos, 50)
-                orders.append(Order('ORCHIDS', top_buy, -quantity_to_buy))
-                convsersions = quantity_to_buy
+            if cost_buy < top_buy and apos > self.POSITION_LIMIT['ORCHIDS']:
+                quantity_to_sell = max(-self.POSITION_LIMIT['ORCHIDS'] - apos, -50)
+                orders.append(Order('ORCHIDS', top_buy, quantity_to_sell))
+                convsersions = quantity_to_sell
 
             if cost_sell > top_ask:
-                quantity_to_sell = min(self.POSITION_LIMIT['ORCHIDS'] - apos, 50)
-                orders.append(Order('ORCHIDS', top_ask, quantity_to_sell))
-                convsersions = -quantity_to_sell
+                quantity_to_buy = min(self.POSITION_LIMIT['ORCHIDS'] - apos, 50)
+                orders.append(Order('ORCHIDS', top_ask, quantity_to_buy))
+                convsersions = -quantity_to_buy
 
         return orders, convsersions
 
@@ -420,15 +419,15 @@ class Trader:
         cdf_d1 = self.standard_normal_cdf(d1)
         cdf_d2 = self.standard_normal_cdf(d2)
 
-        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2
+        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2, d1
 
     def _compute_implied_vol(self, coco_price: float, coupon_price: float) -> float:
         def f(sigma):
-            bs_call = self._bsm_call(coco_price, 10_000, 246, 0, sigma)
+            bs_call, d1 = self._bsm_call(coco_price, 10_000, 246, 0, sigma)
 
             return bs_call - coupon_price
 
-        tol = 1e-6 
+        tol = 1e-9
         max_iter = 100
         low = 0
         high = 1
@@ -453,14 +452,14 @@ class Trader:
         mid_coco_coup = (top_bid_coup+top_ask_coup)/2
 
         imp_vol = self._compute_implied_vol(mid_coco, mid_coco_coup)
-        logger.print(imp_vol)
+        imp_call_val, delta = self._bsm_call(mid_coco, 10_000, 246, 0, imp_vol)
 
-        if imp_vol > 0.01007370083532801 + 0.00021455736370659862:
-            orders_coco.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
-            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
-        elif imp_vol < 0.01007370083532801 - 0.00021455736370659862:
-            orders_coco.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
-            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
+        if imp_vol < 0.010293960957374844-0.00021603815343471992 and self.position['COCONUT_COUPON']-2 > -600:
+            orders_coco.append(Order('COCONUT', top_ask_coco, 1))
+            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -2))
+        elif imp_vol > 0.010293960957374844+0.00021603815343471992 and self.position['COCONUT_COUPON']+2 < 600:
+            orders_coco.append(Order('COCONUT', top_bid_coco, -1))
+            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, 2))
 
         return orders_coco, orders_coupon
     
