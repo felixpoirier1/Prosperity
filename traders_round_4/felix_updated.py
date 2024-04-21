@@ -95,7 +95,7 @@ logger = Logger()
 
 class Trader:
     def __init__(self) -> None:
-        self.position = {'STARFRUIT':0, 'AMETHYSTS':0, 'ORCHIDS':0, 'CHOCOLATE': 0, 'ROSES': 0, "GIFT_BASKET": 0 , 'STRAWBERRIES': 0}
+        self.position = {'STARFRUIT':0, 'AMETHYSTS':0, 'ORCHIDS':0, 'CHOCOLATE': 0, 'ROSES': 0, "GIFT_BASKET": 0 , 'STRAWBERRIES': 0, "COCONUT": 0, "COCONUT_COUPON": 0}
 
         self.cpnl = defaultdict(lambda : 0)
         self.sf_cache = []
@@ -109,10 +109,8 @@ class Trader:
 
         # etf 
         self.spread_std = 75
-        self.choco_pct = 0
-        self.roses_pct = 0
-        self.straw_pct = 0
-        self._coco_hist_imp_vols = []
+
+        # options
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -293,11 +291,6 @@ class Trader:
         
         synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
-        synth_base_mid = (synth_bid+synth_ask)/2
-
-        self.choco_pct = (3*(straw_buy+straw_sell))/synth_base_mid
-        self.roses_pct = ((rose_buy+rose_sell)/2)/synth_base_mid
-        self.straw_pct = (2*(choco_buy+choco_sell))/synth_base_mid
 
         return int(synth_bid), int(synth_ask)
         
@@ -336,38 +329,26 @@ class Trader:
         return etf_orders
 
     def standard_normal_cdf(self, x):
-        p = 0.2316419
-        b1 = 0.319381530
-        b2 = -0.356563782
-        b3 = 1.781477937
-        b4 = -1.821255978
-        b5 = 1.330274429
-
-        t = 1 / (1 + p * x)
-        z = math.exp(-0.5 * x * x) / math.sqrt(2 * math.pi)
-
-        cdf_comp = 1 - z * (b1*t + b2 * t**2 + b3 * t**3 + b4 * t**4 + b5 * t**5)
-
-        if x >= 0:
-            return cdf_comp
-        else:
-            return 1 - cdf_comp
+        return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
 
     def _bsm_call(self, S, K, T, r, sigma):
-        d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+        d1 = (np.log(S / K) + (r + 0.5 * (sigma ** 2)) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
         cdf_d1 = self.standard_normal_cdf(d1)
         cdf_d2 = self.standard_normal_cdf(d2)
-        return S * cdf_d1 - K * np.exp(-r * T) * cdf_d2
 
-    def _compute_implied_vol(self, coco_price: float) -> float:
+        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2
+
+    def _compute_implied_vol(self, coco_price: float, coupon_price: float) -> float:
         def f(sigma):
-            return self._bsm_call(coco_price, 10_000, 246, 0, sigma) - coco_price
+            bs_call = self._bsm_call(coco_price, 10_000, 246, 0, sigma)
+
+            return bs_call - coupon_price
 
         tol = 1e-6 
         max_iter = 100
-        low = 0.01
-        high = 0.025
+        low = 0
+        high = 1
 
         for _ in range(max_iter):
             mid = (low + high) / 2
@@ -379,16 +360,26 @@ class Trader:
             if abs(high - low) < tol:
                 return mid
         
-        raise RuntimeError("Implied volatility bisection did not converge within the maximum number of iterations.")
-        
     def compute_coconuts_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
-        mid_coco = (sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0]+sorted(coconuts_depth.sell_orders.items())[0][0])/2
-        mid_coco_coup = (sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0]+sorted(coconuts_coupon_depth.sell_orders.items())[0][0])/2
-        imp_vol = self._compute_implied_vol(mid_coco)
+        orders_coco = []
+        orders_coupon = []
+        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
+        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
+        
+        mid_coco = (top_bid_coco+top_ask_coco)/2
+        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
 
-        logger.print(f'Imp_vol val: {imp_vol}')
+        imp_vol = self._compute_implied_vol(mid_coco, mid_coco_coup)
+        logger.print(imp_vol)
 
-        return 0, 1
+        if imp_vol > 0.01007370083532801 + 0.00021455736370659862:
+            orders_coco.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
+        elif imp_vol < 0.01007370083532801 - 0.00021455736370659862:
+            orders_coco.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
+
+        return orders_coco, orders_coupon
         
     def deserializeJson(self, json_string):
         if json_string == "":
@@ -454,7 +445,9 @@ class Trader:
             if ords:
                 result[prod] = ords
 
-        coco_coup_orders, coco_orders = self.compute_coconuts_orders(coconuts_depth, coconuts_coupon_depth)
+        coco_orders, coco_coup_orders = self.compute_coconuts_orders(coconuts_depth, coconuts_coupon_depth)
+        result['COCONUT'] = coco_orders
+        result['COCONUT_COUPON'] = coco_coup_orders
 
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)

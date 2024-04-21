@@ -6,6 +6,7 @@ from collections import defaultdict
 import numpy as np
 import copy
 import operator
+import math
 
 
 class Logger:
@@ -94,11 +95,11 @@ logger = Logger()
 
 class Trader:
     def __init__(self) -> None:
-        self.position = {'STARFRUIT':0, 'AMETHYSTS':0, 'ORCHIDS':0, 'CHOCOLATE': 0, 'ROSES': 0, "GIFT_BASKET": 0 , 'STRAWBERRIES': 0}
+        self.position = {'STARFRUIT':0, 'AMETHYSTS':0, 'ORCHIDS':0, 'CHOCOLATE': 0, 'ROSES': 0, "GIFT_BASKET": 0 , 'STRAWBERRIES': 0, "COCONUT": 0, "COCONUT_COUPON": 0}
 
         self.cpnl = defaultdict(lambda : 0)
         self.sf_cache = []
-        self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20, 'ORCHIDS':100, 'CHOCOLATE': 250, 'ROSES': 60, "GIFT_BASKET": 60 , 'STRAWBERRIES': 350}
+        self.POSITION_LIMIT = {'STARFRUIT':20, 'AMETHYSTS':20, 'ORCHIDS':100, 'CHOCOLATE': 250, 'ROSES': 60, "GIFT_BASKET": 60 , 'STRAWBERRIES': 350, "COCONUT": 300, "COCONUT_COUPON": 600}
         self.sf_params = [0.08442609, 0.18264657, 0.7329293]
 
         # orchids
@@ -410,6 +411,59 @@ class Trader:
 
         return etf_orders
 
+    def standard_normal_cdf(self, x):
+        return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
+
+    def _bsm_call(self, S, K, T, r, sigma):
+        d1 = (np.log(S / K) + (r + 0.5 * (sigma ** 2)) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        cdf_d1 = self.standard_normal_cdf(d1)
+        cdf_d2 = self.standard_normal_cdf(d2)
+
+        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2
+
+    def _compute_implied_vol(self, coco_price: float, coupon_price: float) -> float:
+        def f(sigma):
+            bs_call = self._bsm_call(coco_price, 10_000, 246, 0, sigma)
+
+            return bs_call - coupon_price
+
+        tol = 1e-6 
+        max_iter = 100
+        low = 0
+        high = 1
+
+        for _ in range(max_iter):
+            mid = (low + high) / 2
+            if f(mid) > 0:
+                high = mid
+            else:
+                low = mid
+            
+            if abs(high - low) < tol:
+                return mid
+        
+    def compute_coconuts_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
+        orders_coco = []
+        orders_coupon = []
+        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
+        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
+        
+        mid_coco = (top_bid_coco+top_ask_coco)/2
+        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
+
+        imp_vol = self._compute_implied_vol(mid_coco, mid_coco_coup)
+        logger.print(imp_vol)
+
+        if imp_vol > 0.01007370083532801 + 0.00021455736370659862:
+            orders_coco.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
+        elif imp_vol < 0.01007370083532801 - 0.00021455736370659862:
+            orders_coco.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON']))
+
+        return orders_coco, orders_coupon
+    
     def deserializeJson(self, json_string):
         if json_string == "":
             return
@@ -462,11 +516,19 @@ class Trader:
                 etf = order_depth
             elif product == 'CHOCOLATE' or product == 'ROSES' or product == 'STRAWBERRIES':
                 etf_components[product] = order_depth
+            elif product == "COCONUT":
+                coconuts_depth = order_depth
+            elif product == "COCONUT_COUPON":
+                coconuts_coupon_depth = order_depth
 
         etf_orders = self.compute_etf_orders(state.order_depths, etf, etf_components)
         for prod, ords in etf_orders.items():
             if ords:
                 result[prod] = ords
+
+        coco_orders, coco_coup_orders = self.compute_coconuts_orders(coconuts_depth, coconuts_coupon_depth)
+        result['COCONUT'] = coco_orders
+        result['COCONUT_COUPON'] = coco_coup_orders
 
         trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
