@@ -1,6 +1,6 @@
 import json
 import jsonpickle
-from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState, OwnTrade
+from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
 from typing import Any, List, Dict, Tuple
 from collections import defaultdict
 import numpy as np
@@ -308,125 +308,74 @@ class Trader:
         rose_buy = sorted(etf_components["ROSES"].buy_orders.items(), reverse=True)[0][0]
         rose_sell = sorted(etf_components["ROSES"].sell_orders.items())[0][0]
         
-        synth_base_bid = (6*straw_buy + 4*choco_buy + rose_buy)
-        synth_base_ask = (6*straw_sell + 4*choco_sell + rose_sell)
+        synth_bid = (6*straw_buy + 4*choco_buy + rose_buy)+380
+        synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
+        synth_base_mid = (synth_bid+synth_ask)/2
 
-        return int(synth_base_bid)+self.synth_premium, int(synth_base_ask)+self.synth_premium
+        self.choco_pct = (3*(straw_buy+straw_sell))/synth_base_mid
+        self.roses_pct = ((rose_buy+rose_sell)/2)/synth_base_mid
+        self.straw_pct = (2*(choco_buy+choco_sell))/synth_base_mid
+
+        return int(synth_bid), int(synth_ask)
         
-    def _assess_etf_arbitrage(self, etf: OrderDepth, synth_bid: int, synth_ask) -> str:
-        etf_ask = sorted(etf.sell_orders.items())[0][0]
-        etf_bid = sorted(etf.buy_orders.items(), reverse=True)[0][0]
-
-        etf_mid = (etf_ask + etf_bid)/2
-        synth_mid = (synth_ask + synth_bid)/2
-
-        if synth_bid-etf_ask > 0.75*self.spread_std:
-            self.side = "undervalued"
-        elif etf_bid-synth_ask > 0.75*self.spread_std:
-            self.side = "overvalued"
-        elif (synth_mid-etf_mid < 0*self.spread_std) and self.position['GIFT_BASKET'] > 0:
-            self.side = 'rebalance_under'
-        elif (etf_mid-synth_mid < 0*self.spread_std) and self.position['GIFT_BASKET'] < 0:
-            self.side = 'rebalance_over'
+    def etf_threshold(self, spread):
+        if 0.25*self.spread_std <= spread < 0.5*self.spread_std:
+            return 0.2
+        elif 0.5*self.spread_std <= spread < self.spread_std:
+            return 0.8
+        elif self.spread_std <= spread:
+            return 1
         else:
-            self.side = None
-        
-    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], own_trades: OwnTrade) -> dict[Symbol, list[Order]]:
-        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[], 'STRAWBERRIES':[], 'ROSES':[]}
+            return 0
+
+    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], synth_bid: int, synth_ask:int) -> dict[Symbol, list[Order]]:
+        orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[], 'STRAWBERRIES': [], 'ROSES':[]}
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
-        choco_sell = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][0]
-        choco_buy = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][0]
-        straw_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
-        straw_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
-        roses_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
-        roses_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]\
-        
-        if own_trades.counter_party == 'Rhianna':
-            pass
-        
-        if self.side == 'undervalued':
-            pos_mins = min(
-                    (self.POSITION_LIMIT["STRAWBERRIES"]+self.position["STRAWBERRIES"])//6, 
-                    (self.POSITION_LIMIT["CHOCOLATE"]+self.position["CHOCOLATE"])//4, 
-                    (self.POSITION_LIMIT["ROSES"]+self.position["ROSES"]), 
-                    (self.POSITION_LIMIT["GIFT_BASKET"]-self.position["GIFT_BASKET"])
-                    )
-            
-            vol = min(1, pos_mins)
-            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, vol))
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -vol*4))
-            orders['ROSES'].append(Order('ROSES', roses_buy, -vol))
-            orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -vol*6))
 
-        elif self.side == 'overvalued':
-            pos_mins = min(
-                (self.POSITION_LIMIT["STRAWBERRIES"]-self.position["STRAWBERRIES"])//6, 
-                (self.POSITION_LIMIT["CHOCOLATE"]-self.position["CHOCOLATE"])//4, 
-                (self.POSITION_LIMIT["ROSES"]-self.position["ROSES"]), 
-                (self.POSITION_LIMIT["GIFT_BASKET"]+self.position["GIFT_BASKET"])
-                )
-            vol = min(1, pos_mins)
-            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -vol))
-            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, vol*4))
-            orders['ROSES'].append(Order('ROSES', roses_sell, vol))
-            orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, vol*6))
-        elif self.side == 'rebalance_under':
-            pos_mins = min(
-                (-self.position["STRAWBERRIES"])//6, 
-                (-self.position["CHOCOLATE"])//4, 
-                (-self.position["ROSES"]), 
-                (self.position["GIFT_BASKET"])
-                )
-            vol = min(1, pos_mins)
-            if vol != 0:
-                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -vol))
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, vol*4))
-                orders['ROSES'].append(Order('ROSES', roses_sell, vol))
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, vol*6))
-            else:
-                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -self.position["GIFT_BASKET"]))
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, -self.position["CHOCOLATE"]))
-                orders['ROSES'].append(Order('ROSES', roses_sell, -self.position["ROSES"]))
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, -self.position["STRAWBERRIES"]))
-        elif self.side == 'rebalance_over':
-            pos_mins = min(
-                    (self.position["STRAWBERRIES"])//6, 
-                    (self.position["CHOCOLATE"])//4, 
-                    (self.position["ROSES"]), 
-                    (-self.position["GIFT_BASKET"])
-                    )
-            vol = min(1, pos_mins)
-            if vol != 0:
-                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, vol))
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -vol*4))
-                orders['ROSES'].append(Order('ROSES', roses_buy, -vol))
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -vol*6))
-            else:
-                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, -self.position["GIFT_BASKET"]))
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -self.position["CHOCOLATE"]))
-                orders['ROSES'].append(Order('ROSES', roses_buy, -self.position["ROSES"]))
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -self.position["STRAWBERRIES"]))
+        if synth_bid-gift_sell > 0.25*self.spread_std:
+            pct_position = self.etf_threshold(synth_bid-gift_sell)
 
+            total_qty_gift = int(pct_position*(self.POSITION_LIMIT['GIFT_BASKET']))
+
+            if total_qty_gift > self.position['GIFT_BASKET']:
+                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, 1))
+
+        elif gift_buy-synth_ask > 0.25*self.spread_std:
+            pct_position = self.etf_threshold(gift_buy-synth_ask)
+
+            total_qty_gift = -int(pct_position*(self.POSITION_LIMIT['GIFT_BASKET']))
+
+            if total_qty_gift < self.position['GIFT_BASKET']:
+                orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, -1))
+
+        elif synth_bid-gift_sell < 0 and self.position['GIFT_BASKET'] > 0:
+            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, max(-2, -self.position['GIFT_BASKET'])))
+
+        elif gift_buy-synth_ask < 0 and self.position['GIFT_BASKET'] < 0:
+            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, min(2, -self.position['GIFT_BASKET'])))
+ 
         return orders
     
-    def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf: OrderDepth, etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
+    def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
         synth_bid, synth_ask = self._compute_synthetic_prices(etf_components)
-        self._assess_etf_arbitrage(etf, synth_bid, synth_ask)
 
-        etf_orders = self._compute_etf_orders(order_depths)
+        etf_orders = self._compute_etf_orders(order_depths, synth_bid, synth_ask)
 
         return etf_orders
 
     def norm_cdf(self, x):
         return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
-
-    def vanilla_price_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250):
+    
+    def vanilla_price_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250, call_put_flag='C'):
         tau = (T - t) / 250
         d1 = np.log((S * np.exp(r * tau) / K)) / (sigma * np.sqrt(tau)) + (sigma * np.sqrt(tau)) / 2
         d2 = d1 - sigma * np.sqrt(tau)
-        vanilla_price = S * self.norm_cdf(d1) - K * np.exp(-r * tau) * self.norm_cdf(d2)
+        if call_put_flag == 'C':
+            vanilla_price = S * self.norm_cdf(d1) - K * np.exp(-r * tau) * self.norm_cdf(d2)
+        else:
+            vanilla_price = K * np.exp(-r * tau) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1)
 
         return vanilla_price
     
@@ -436,7 +385,7 @@ class Trader:
 
         return self.norm_cdf(d1)
     
-    def threshold(self, spread):
+    def option_threshold(self, spread):
         if 5 <= spread < 10:
             return 0.2
         elif 10 <= spread < 15:
@@ -447,12 +396,10 @@ class Trader:
             return 0
 
     def compute_coupon_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
-        orders = {}
-        try:
-            top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
-            top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
-        except Exception as e:
-            return {}
+        coup_orders = []
+
+        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
+        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
 
         imp_coup_bid = self.vanilla_price_BS(top_bid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
         imp_coup_ask = self.vanilla_price_BS(top_ask_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
@@ -461,41 +408,68 @@ class Trader:
         if top_bid_coup - imp_coup_ask >= 5:
             spread = top_bid_coup - imp_coup_ask
 
-            pct_position = self.threshold(spread)
+            pct_position = self.option_threshold(spread)
 
             total_qty_coup = -int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
-            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
-
-            if total_qty_coco > self.position['COCONUT']:
-                orders["COCONUT"] = Order("COCONUT", top_ask_coco, total_qty_coco-self.position['COCONUT'])
 
             if total_qty_coup < self.position['COCONUT_COUPON']:
-                orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, total_qty_coup-self.position['COCONUT_COUPON'])
+                coup_orders.append(Order("COCONUT_COUPON", top_bid_coup, max(-15, total_qty_coup-self.position['COCONUT_COUPON'])))
 
         #long VOL
         elif imp_coup_bid - top_ask_coup >= 5:
             spread = imp_coup_bid - top_ask_coup
 
-            pct_position = self.threshold(spread)
+            pct_position = self.option_threshold(spread)
 
             total_qty_coup = int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
-            total_qty_coco = -int(pct_position*(self.POSITION_LIMIT['COCONUT']))
-
-            if total_qty_coco < self.position['COCONUT']:
-                orders["COCONUT"] = Order("COCONUT", top_bid_coco, total_qty_coco-self.position['COCONUT'])
 
             if total_qty_coup > self.position['COCONUT_COUPON']:
-                orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, total_qty_coup-self.position['COCONUT_COUPON'])
+                coup_orders.append(Order("COCONUT_COUPON", top_ask_coup, min(15, total_qty_coup-self.position['COCONUT_COUPON'])))
 
-        elif top_bid_coup - imp_coup_ask < 0 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 20))
-            orders["COCONUT"] = Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -10))
+        elif top_bid_coup - imp_coup_ask < 0 and self.position["COCONUT_COUPON"] < 0:
+            coup_orders.append(Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 30)))
 
-        elif imp_coup_bid - top_ask_coup < 0 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, max(-self.position["COCONUT_COUPON"], -20))
-            orders["COCONUT"] = Order("COCONUT", top_ask_coco, min(10, -self.position["COCONUT"]))
+        elif imp_coup_bid - top_ask_coup < 0 and self.position["COCONUT_COUPON"] > 0:
+            coup_orders.append(Order("COCONUT_COUPON", top_bid_coup, max(-self.position["COCONUT_COUPON"], -30)))
 
-        return orders
+        return coup_orders
+    
+    def compute_coco_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
+        coup_orders = []
+
+        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
+        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
+
+        mid_coco = (top_bid_coco+top_ask_coco)/2
+        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
+
+        imp_coco_mid = self.vanilla_price_BS(mid_coco, 4+(self.count/10000), K=10000, r=0, sigma=0.16, T=250, call_put_flag='P')
+
+        coco_spread = (mid_coco_coup - imp_coco_mid + 10000) - mid_coco
+
+        if coco_spread >= 5:
+            pct_position = self.option_threshold(coco_spread)
+
+            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
+
+            if total_qty_coco > self.position['COCONUT']:
+                coup_orders.append(Order("COCONUT", top_ask_coco, min(10, total_qty_coco-self.position['COCONUT'])))
+
+        elif coco_spread <= -5:
+            pct_position = self.option_threshold(-coco_spread)
+
+            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
+
+            if total_qty_coco < self.position['COCONUT']:
+                coup_orders.append(Order("COCONUT", top_bid_coco, min(10, total_qty_coco-self.position['COCONUT'])))
+
+        elif coco_spread > 0 and self.position["COCONUT"] < 0:
+            coup_orders.append(Order("COCONUT", top_ask_coco, min(-self.position["COCONUT"], 20)))
+
+        elif coco_spread < 0 and self.position["COCONUT"] > 0:
+            coup_orders.append(Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -20)))
+
+        return coup_orders
 
     def deserializeJson(self, json_string):
         if json_string == "":
@@ -559,16 +533,13 @@ class Trader:
             elif product == "COCONUT_COUPON":
                 coconuts_coupon_depth = order_depth
 
-        etf_orders = self.compute_etf_orders(state.order_depths, etf, etf_components, own_trades)
+        etf_orders = self.compute_etf_orders(state.order_depths, etf_components)
         for prod, ords in etf_orders.items():
             if ords:
                 result[prod] = ords
 
-        trades_coco_n_coup = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
-
-        for prod, ords in trades_coco_n_coup.items():
-            if ords: 
-                result[prod] = [ords]
+        result['COCONUT_COUPON'] = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
+        result['COCONUT'] = self.compute_coco_orders(coconuts_depth, coconuts_coupon_depth)
 
         #trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
