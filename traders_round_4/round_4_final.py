@@ -561,7 +561,7 @@ class Trader:
         trades_coco_n_coup = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
 
         for prod, ords in trades_coco_n_coup.items():
-            if ords:
+            if ords: 
                 result[prod] = [ords]
 
         trader_data = self.serializeJson()
