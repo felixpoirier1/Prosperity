@@ -437,9 +437,11 @@ class Trader:
         mid_coco = (top_bid_coco+top_ask_coco)/2
         mid_coco_coup = (top_bid_coup+top_ask_coup)/2
 
-        imp_call_val = self.vanilla_price_BS(mid_coco, 4+(self.count/10000), K=10000, r=0, sigma=0.19, T=250)
+        imp_call_val = self.vanilla_price_BS(mid_coco, 4+(self.count/10000), K=10000, r=0, sigma=0.19332951334290502, T=250)
         
         call_spread = imp_call_val - mid_coco_coup
+
+        logger.print(f'call_spread: {call_spread}')
 
         q = 30
 
@@ -470,6 +472,8 @@ class Trader:
         coco_spread = mid_coco_coup - option_price + 10000 - mid_coco
 
         q = 30
+
+        logger.print(f'coco_spread: {coco_spread}')
 
         if coco_spread < -self.coco_spread and self.position['COCONUT'] > 0:
             orders_coco.append(Order('COCONUT', top_bid_coco, -self.position['COCONUT']))

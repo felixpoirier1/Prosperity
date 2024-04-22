@@ -419,71 +419,75 @@ class Trader:
     def norm_cdf(self, x):
         return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
 
-    def vanilla_price_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250, call_put_flag='C'):
+    def vanilla_price_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250):
         tau = (T - t) / 250
         d1 = np.log((S * np.exp(r * tau) / K)) / (sigma * np.sqrt(tau)) + (sigma * np.sqrt(tau)) / 2
         d2 = d1 - sigma * np.sqrt(tau)
-        if call_put_flag == 'C':
-            vanilla_price = S * self.norm_cdf(d1) - K * np.exp(-r * tau) * self.norm_cdf(d2)
-        else:
-            vanilla_price = K * np.exp(-r * tau) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1)
+        vanilla_price = S * self.norm_cdf(d1) - K * np.exp(-r * tau) * self.norm_cdf(d2)
 
         return vanilla_price
     
-    def delta_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250, call_put_flag='C'):
+    def delta_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250):
         tau = (T - t) / 250
         d1 = np.log((S * np.exp(r * tau) / K)) / (sigma * np.sqrt(tau)) + (sigma * np.sqrt(tau)) / 2
 
         return self.norm_cdf(d1)
-
-    @staticmethod
-    def sizing(spread, max_thresh = 20, min_thresh=10):
-        if spread > max_thresh:
+    
+    def threshold(self, spread):
+        if 5 <= spread < 10:
+            return 0.25
+        elif 10 <= spread < 15:
+            return 0.5
+        elif 15 <= spread < 20:
+            return 0.85
+        elif spread >= 20:
             return 1
-        elif spread < min_thresh:
-            return 0
-        
-        return 1/(max_thresh-min_thresh)*spread - min_thresh/(max_thresh-min_thresh)
-        
+
     def compute_coupon_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
-        epsilon = 12
         orders = {}
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
         top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
-        
-        mid_coco = (top_bid_coco+top_ask_coco)/2
-        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
 
         imp_coup_bid = self.vanilla_price_BS(top_bid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
         imp_coup_ask = self.vanilla_price_BS(top_ask_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
 
         # short VOL 
-        if top_bid_coup - imp_coup_ask > epsilon:
+        if top_bid_coup - imp_coup_ask >= 5:
             spread = top_bid_coup - imp_coup_ask
-            logger.print(f'short vol {spread}')
-            qty_coup = max(-int(2*(spread-epsilon+1)), -30)
-            qty_coco = min(int(spread-epsilon+1), 15)
 
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, qty_coup)
-            orders["COCONUT"] = Order("COCONUT", top_ask_coco, qty_coco)
+            pct_position = self.threshold(spread)
+
+            total_qty_coup = -int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
+            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
+
+            if total_qty_coco > self.position['COCONUT']:
+                orders["COCONUT"] = Order("COCONUT", top_ask_coco, total_qty_coco-self.position['COCONUT'])
+
+            if total_qty_coup < self.position['COCONUT_COUPON']:
+                orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, total_qty_coup-self.position['COCONUT_COUPON'])
 
         #long VOL
-        elif imp_coup_bid - top_ask_coup > epsilon:
+        elif imp_coup_bid - top_ask_coup >= 5:
             spread = imp_coup_bid - top_ask_coup
-            logger.print(f'long vol {spread}')
-            qty_coup = min(-int(2*(spread-epsilon+1)), 30)
-            qty_coco = max(-int(spread-epsilon+1), -15)
 
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, qty_coup)
-            orders["COCONUT"] = Order("COCONUT", top_bid_coco, qty_coco)
+            pct_position = self.threshold(spread)
 
-        elif top_bid_coup - imp_coup_ask < epsilon*0.5 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0 ):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, -self.position["COCONUT_COUPON"])
-            orders["COCONUT"] = Order("COCONUT", top_bid_coco, -self.position["COCONUT"])
+            total_qty_coup = int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
+            total_qty_coco = -int(pct_position*(self.POSITION_LIMIT['COCONUT']))
 
-        elif imp_coup_bid - top_ask_coup < epsilon*0.5 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0 ):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, -self.position["COCONUT_COUPON"])
-            orders["COCONUT"] = Order("COCONUT", top_ask_coco, -self.position["COCONUT"])
+            if total_qty_coco < self.position['COCONUT']:
+                orders["COCONUT"] = Order("COCONUT", top_bid_coco, total_qty_coco-self.position['COCONUT'])
+
+            if total_qty_coup > self.position['COCONUT_COUPON']:
+                orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, total_qty_coup-self.position['COCONUT_COUPON'])
+
+        elif top_bid_coup - imp_coup_ask < 2 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 30))
+            orders["COCONUT"] = Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -15))
+
+        elif imp_coup_bid - top_ask_coup < 2 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, max(-self.position["COCONUT_COUPON"], -30))
+            orders["COCONUT"] = Order("COCONUT", top_ask_coco, min(15, -self.position["COCONUT"]))
 
         return orders
 
@@ -551,7 +555,6 @@ class Trader:
         for prod, ords in etf_orders.items():
             if ords:
                 result[prod] = ords
-
 
         trades_coco_n_coup = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
 
