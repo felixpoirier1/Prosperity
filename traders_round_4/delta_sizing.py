@@ -114,6 +114,9 @@ class Trader:
 
         # option
         self.vol_lst = []
+        self.count = 0
+        self.vol_mean = 0.010145105856897771
+        self.vol_std = 0.00021603815343471992
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -422,11 +425,11 @@ class Trader:
         cdf_d1 = self.standard_normal_cdf(d1)
         cdf_d2 = self.standard_normal_cdf(d2)
 
-        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2, d1
+        return S*cdf_d1 - K*np.exp(-r*T)*cdf_d2, cdf_d1
 
     def _compute_implied_vol(self, coco_price: float, coupon_price: float) -> float:
         def f(sigma):
-            bs_call, d1 = self._bsm_call(coco_price, 10_000, 246, 0, sigma)
+            bs_call, cdf_d1 = self._bsm_call(coco_price, 10_000, 246-(self.count/10_000), 0, sigma)
 
             return bs_call - coupon_price
 
@@ -451,54 +454,68 @@ class Trader:
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
         top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
         
-        mid_coco = (top_bid_coco+top_ask_coco)/2
-        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
+        imp_vol_high = self._compute_implied_vol(top_ask_coco, top_bid_coup)
+        imp_vol_low = self._compute_implied_vol(top_bid_coco, top_ask_coup)
 
-        imp_vol = self._compute_implied_vol(mid_coco, mid_coco_coup)
-        imp_call_val, delta = self._bsm_call(mid_coco, 10_000, 246, 0, imp_vol)
+        _, delta_high = self._bsm_call(top_ask_coco, 10_000, 246-(self.count/10000), 0, imp_vol_high)
+        _, delta_low = self._bsm_call(top_bid_coco, 10_000, 246-(self.count/10000), 0, imp_vol_low)    
 
-        logger.print(delta)    
-
-        if imp_vol < 0.010293960957374844-0.00021603815343471992:
-            stock_sizing = max(300, int(600*delta))
-
-            if stock_sizing == 300:
-                option_sizing = int(300/delta)
+        if imp_vol_high > self.vol_mean+self.vol_std:
+            if self.position['COCONUT'] < 0 or self.position['COCONUT_COUPON'] > 0:
+                orders_coco.append(Order('COCONUT', top_ask_coco, -self.position['COCONUT']))
+                orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -self.position['COCONUT_COUPON']))
             else:
-                option_sizing = 600
-
-            if stock_sizing-self.position['COCONUT'] > 0:
-                stock_price = top_ask_coco
-            else:
-                stock_price = top_bid_coco
-
-            if -option_sizing-self.position['COCONUT_COUPON'] > 0:
-                option_price = top_bid_coup
-            else:
+                # coco non-neg, coup non-pos
                 option_price = top_ask_coup
-        
-            orders_coco.append(Order('COCONUT', stock_price, stock_sizing-self.position['COCONUT']))
-            orders_coupon.append(Order('COCONUT_COUPON', option_price, -option_sizing-self.position['COCONUT_COUPON']))
-        elif imp_vol > 0.010293960957374844+0.00021603815343471992:
-            stock_sizing = min(300, int(600*delta))
-
-            if stock_sizing == 300:
-                option_sizing = int(300/delta)
-            else:
-                option_sizing = 600
-
-            if -stock_sizing-self.position['COCONUT'] > 0:
                 stock_price = top_ask_coco
-            else:
-                stock_price = top_bid_coco
+                stock_sizing = min(30, int(60*delta_low))
 
-            if option_sizing-self.position['COCONUT_COUPON'] > 0:
-                option_price = top_bid_coup
+                if stock_sizing == 30:
+                    if self.position['COCONUT'] + stock_sizing <= self.POSITION_LIMIT['COCONUT']:
+                        stock_qty = stock_sizing
+                    else:
+                        stock_qty = self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']
+                    
+                    option_qty = -int((self.position['COCONUT']+stock_qty)/delta_low)-self.position['COCONUT_COUPON']
+                else:
+                    option_qty = max(-60, -self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON'])
+                    stock_qty = -int((self.position['COCONUT_COUPON']+option_qty)*delta_low)-self.position['COCONUT']
+            
+                if stock_qty < 0:
+                    stock_price = top_bid_coco
+                if option_qty < 0:
+                    option_price = top_bid_coup
+
+                orders_coco.append(Order('COCONUT', stock_price, stock_qty))
+                orders_coupon.append(Order('COCONUT_COUPON', option_price, option_qty))
+        elif imp_vol_low < self.vol_mean-self.vol_std:
+            if self.position['COCONUT'] > 0 or self.position['COCONUT_COUPON'] < 0:
+                orders_coco.append(Order('COCONUT', top_bid_coco, -self.position['COCONUT']))
+                orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, -self.position['COCONUT_COUPON']))
             else:
+                # coco non-pos, coup non-neg
                 option_price = top_ask_coup
-        
-            orders_coco.append(Order('COCONUT', stock_price, -stock_sizing-self.position['COCONUT']))
-            orders_coupon.append(Order('COCONUT_COUPON', option_price, option_sizing-self.position['COCONUT_COUPON']))
+                stock_price = top_ask_coco
+                stock_sizing = min(30, int(60*delta_high))
+
+                if stock_sizing == 30:
+                    if self.position['COCONUT'] - stock_sizing >= -self.POSITION_LIMIT['COCONUT']:
+                        stock_qty = -stock_sizing
+                    else:
+                        stock_qty = -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']
+                    
+                    option_qty = -int((self.position['COCONUT']+stock_qty)/delta_high)-self.position['COCONUT_COUPON']
+                else:
+                    option_qty = min(60, self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON'])
+                    stock_qty = -int((self.position['COCONUT_COUPON']+option_qty)*delta_high)-self.position['COCONUT']
+            
+                if stock_qty < 0:
+                    stock_price = top_bid_coco
+                if option_qty < 0:
+                    option_price = top_bid_coup
+
+                orders_coco.append(Order('COCONUT', stock_price, stock_qty))
+                orders_coupon.append(Order('COCONUT_COUPON', option_price, option_qty))
 
         return orders_coco, orders_coupon
     
@@ -513,11 +530,13 @@ class Trader:
         return jsonpickle.encode(self.__dict__)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        '''
         try:
             self.deserializeJson(state.traderData)
         except:
             logger.print("Error in deserializing trader data")
-
+        '''
+        self.count += 1
         result = {}
 
         for key, val in state.position.items():
@@ -568,6 +587,6 @@ class Trader:
         result['COCONUT'] = coco_orders
         result['COCONUT_COUPON'] = coco_coup_orders
 
-        trader_data = self.serializeJson()
+        #trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
