@@ -116,7 +116,7 @@ class Trader:
         self.coup_spread = 15
         self.coco_spread = 15
         self.count = 0
-        self.day = 3
+        self.day = 4
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -435,18 +435,21 @@ class Trader:
     
     def threshold(self, spread):
         if 5 <= spread < 10:
-            return 0.25
+            return 0.2
         elif 10 <= spread < 15:
-            return 0.5
-        elif 15 <= spread < 20:
-            return 0.85
-        elif spread >= 20:
+            return 0.8
+        elif 15 <= spread:
             return 1
+        else:
+            return 0
 
     def compute_coupon_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
         orders = {}
-        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
-        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
+        try:
+            top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
+            top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
+        except Exception as e:
+            return {}
 
         imp_coup_bid = self.vanilla_price_BS(top_bid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
         imp_coup_ask = self.vanilla_price_BS(top_ask_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
@@ -481,13 +484,13 @@ class Trader:
             if total_qty_coup > self.position['COCONUT_COUPON']:
                 orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, total_qty_coup-self.position['COCONUT_COUPON'])
 
-        elif top_bid_coup - imp_coup_ask < 2 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 30))
-            orders["COCONUT"] = Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -15))
+        elif top_bid_coup - imp_coup_ask < 0 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 20))
+            orders["COCONUT"] = Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -10))
 
-        elif imp_coup_bid - top_ask_coup < 2 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0):
-            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, max(-self.position["COCONUT_COUPON"], -30))
-            orders["COCONUT"] = Order("COCONUT", top_ask_coco, min(15, -self.position["COCONUT"]))
+        elif imp_coup_bid - top_ask_coup < 0 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, max(-self.position["COCONUT_COUPON"], -20))
+            orders["COCONUT"] = Order("COCONUT", top_ask_coco, min(10, -self.position["COCONUT"]))
 
         return orders
 
@@ -502,12 +505,10 @@ class Trader:
         return jsonpickle.encode(self.__dict__)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
-        '''
         try:
             self.deserializeJson(state.traderData)
         except:
             logger.print("Error in deserializing trader data")
-        '''
 
         self.count += 1
         result = {}
@@ -516,6 +517,7 @@ class Trader:
             self.position[key] = val
 
         trader_data = state.traderData
+        conversions = 0
         conversion_observation = state.observations.conversionObservations
         orchid_observation = conversion_observation['ORCHIDS']
         etf_components: Dict[Symbol, OrderDepth] = {}
@@ -562,7 +564,6 @@ class Trader:
             if ords:
                 result[prod] = [ords]
 
-
-        #trader_data = self.serializeJson()
+        trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
