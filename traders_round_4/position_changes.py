@@ -429,62 +429,63 @@ class Trader:
             vanilla_price = K * np.exp(-r * tau) * self.norm_cdf(-d2) - S * self.norm_cdf(-d1)
 
         return vanilla_price
+    
+    def delta_BS(self, S, t, K=10000, r=0., sigma=0.1600006436832186, T=250, call_put_flag='C'):
+        tau = (T - t) / 250
+        d1 = np.log((S * np.exp(r * tau) / K)) / (sigma * np.sqrt(tau)) + (sigma * np.sqrt(tau)) / 2
+
+        return self.norm_cdf(d1)
+
+    @staticmethod
+    def sizing(spread, max_thresh = 20, min_thresh=10):
+        if spread > max_thresh:
+            return 1
+        elif spread < min_thresh:
+            return 0
+        
+        return 1/(max_thresh-min_thresh)*spread - min_thresh/(max_thresh-min_thresh)
         
     def compute_coupon_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
-        orders_coupon = []
+        epsilon = 12
+        orders = {}
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
         top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
         
         mid_coco = (top_bid_coco+top_ask_coco)/2
         mid_coco_coup = (top_bid_coup+top_ask_coup)/2
 
-        imp_call_val = self.vanilla_price_BS(mid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
-        
-        coup_spread = imp_call_val - mid_coco_coup
+        imp_coup_bid = self.vanilla_price_BS(top_bid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
+        imp_coup_ask = self.vanilla_price_BS(top_ask_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250)
 
-        if coup_spread < self.coup_spread*0.5 and self.position['COCONUT_COUPON'] > 0:
-            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, -self.position['COCONUT_COUPON']))
+        # short VOL 
+        if top_bid_coup - imp_coup_ask > epsilon:
+            spread = top_bid_coup - imp_coup_ask
+            logger.print(f'short vol {spread}')
+            qty_coup = max(-int(2*(spread-epsilon+1)), -30)
+            qty_coco = min(int(spread-epsilon+1), 15)
 
-        if coup_spread > -self.coup_spread*0.5 and self.position['COCONUT_COUPON'] < 0:
-            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, -self.position['COCONUT_COUPON']))
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, qty_coup)
+            orders["COCONUT"] = Order("COCONUT", top_ask_coco, qty_coco)
 
-        if coup_spread > self.coup_spread:
-            qty = min(2*int(round(coup_spread-self.coup_spread+1, 0)), self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON'])
-            orders_coupon.append(Order('COCONUT_COUPON', top_ask_coup, qty))
+        #long VOL
+        elif imp_coup_bid - top_ask_coup > epsilon:
+            spread = imp_coup_bid - top_ask_coup
+            logger.print(f'long vol {spread}')
+            qty_coup = min(-int(2*(spread-epsilon+1)), 30)
+            qty_coco = max(-int(spread-epsilon+1), -15)
 
-        if coup_spread < -self.coup_spread:
-            qty = max(2*int(round(coup_spread-self.coup_spread+1, 0)), -self.POSITION_LIMIT['COCONUT_COUPON']-self.position['COCONUT_COUPON'])
-            orders_coupon.append(Order('COCONUT_COUPON', top_bid_coup, qty))
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, qty_coup)
+            orders["COCONUT"] = Order("COCONUT", top_bid_coco, qty_coco)
 
-        return orders_coupon
-    
-    def compute_coconut_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth):
-        orders_coco = []
-        top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
-        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
-        
-        mid_coco = (top_bid_coco+top_ask_coco)/2
-        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
+        elif top_bid_coup - imp_coup_ask < epsilon*0.5 and (self.position["COCONUT_COUPON"] < 0 or self.position["COCONUT"] > 0 ):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_ask_coup, -self.position["COCONUT_COUPON"])
+            orders["COCONUT"] = Order("COCONUT", top_bid_coco, -self.position["COCONUT"])
 
-        option_price = self.vanilla_price_BS(mid_coco, self.day+(self.count/10000), K=10000, r=0, sigma=0.16, T=250, call_put_flag='P')
+        elif imp_coup_bid - top_ask_coup < epsilon*0.5 and (self.position["COCONUT_COUPON"] > 0 or self.position["COCONUT"] < 0 ):
+            orders["COCONUT_COUPON"] = Order("COCONUT_COUPON", top_bid_coup, -self.position["COCONUT_COUPON"])
+            orders["COCONUT"] = Order("COCONUT", top_ask_coco, -self.position["COCONUT"])
 
-        coco_spread = mid_coco_coup - option_price + 10000 - mid_coco
-
-        if coco_spread < self.coco_spread*0.5 and self.position['COCONUT'] > 0:
-            orders_coco.append(Order('COCONUT', top_bid_coco, -self.position['COCONUT']))
-
-        if coco_spread > -self.coco_spread*0.5 and self.position['COCONUT'] < 0:
-            orders_coco.append(Order('COCONUT', top_ask_coco, -self.position['COCONUT']))
-
-        if coco_spread > self.coco_spread:
-            qty = min(2*int(round(coco_spread, 0)), self.POSITION_LIMIT['COCONUT']-self.position['COCONUT'])
-            orders_coco.append(Order('COCONUT', top_ask_coco, qty))
-
-        if coco_spread < -self.coco_spread:
-            qty = max(2*int(round(coco_spread, 0)), -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT'])
-            orders_coco.append(Order('COCONUT', top_bid_coco, qty))
-
-        return orders_coco
+        return orders
 
     def deserializeJson(self, json_string):
         if json_string == "":
@@ -551,8 +552,13 @@ class Trader:
             if ords:
                 result[prod] = ords
 
-        result['COCONUT'] = self.compute_coconut_orders(coconuts_depth, coconuts_coupon_depth)
-        result['COCONUT_COUPON'] = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
+
+        trades_coco_n_coup = self.compute_coupon_orders(coconuts_depth, coconuts_coupon_depth)
+
+        for prod, ords in trades_coco_n_coup.items():
+            if ords:
+                result[prod] = [ords]
+
 
         #trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
