@@ -505,10 +505,12 @@ class Trader:
         return jsonpickle.encode(self.__dict__)
 
     def run(self, state: TradingState) -> tuple[dict[Symbol, list[Order]], int, str]:
+        '''
         try:
             self.deserializeJson(state.traderData)
         except:
             logger.print("Error in deserializing trader data")
+        '''
 
         self.count += 1
         result = {}
@@ -564,6 +566,6 @@ class Trader:
             if ords: 
                 result[prod] = [ords]
 
-        trader_data = self.serializeJson()
+        #trader_data = self.serializeJson()
         logger.flush(state, result, conversions, trader_data)
         return result, conversions, trader_data
