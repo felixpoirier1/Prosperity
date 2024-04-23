@@ -328,11 +328,13 @@ class Trader:
         else:
             return 0
 
-    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], synth_bid: int, synth_ask:int) -> dict[Symbol, list[Order]]:
+    def _compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], synth_bid: int, synth_ask:int, own_trades, market_trades) -> dict[Symbol, list[Order]]:
         orders: Dict[Symbol, list[Order]] = {"GIFT_BASKET": [], 'CHOCOLATE':[], 'STRAWBERRIES': [], 'ROSES':[]}
 
         gift_sell = sorted(order_depths["GIFT_BASKET"].sell_orders.items())[0][0]
         gift_buy = sorted(order_depths["GIFT_BASKET"].buy_orders.items(), reverse=True)[0][0]
+        roses_sell = sorted(order_depths["ROSES"].sell_orders.items())[0][0]
+        roses_buy = sorted(order_depths["ROSES"].buy_orders.items(), reverse=True)[0][0]
 
         if synth_bid-gift_sell > 0.25*self.spread_std:
             pct_position = self.etf_threshold(synth_bid-gift_sell)
@@ -354,14 +356,22 @@ class Trader:
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, max(-2, -self.position['GIFT_BASKET'])))
 
         elif gift_buy-synth_ask < 0 and self.position['GIFT_BASKET'] < 0:
-            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_buy, min(2, -self.position['GIFT_BASKET'])))
- 
+            orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, min(2, -self.position['GIFT_BASKET'])))
+
+        try:
+            if market_trades['ROSES'][0].buyer == 'Rhianna':
+                orders['ROSES'].append(Order('ROSES', roses_sell, self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
+            elif market_trades['ROSES'][0].seller == 'Rhianna':
+                orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
+        except Exception as e:
+            pass
+
         return orders
     
-    def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf_components: Dict[Symbol, OrderDepth]) -> dict[Symbol, list[Order]]:
+    def compute_etf_orders(self, order_depths: Dict[Symbol, OrderDepth], etf_components: Dict[Symbol, OrderDepth], own_trades, market_trades) -> dict[Symbol, list[Order]]:
         synth_bid, synth_ask = self._compute_synthetic_prices(etf_components)
 
-        etf_orders = self._compute_etf_orders(order_depths, synth_bid, synth_ask)
+        etf_orders = self._compute_etf_orders(order_depths, synth_bid, synth_ask, own_trades, market_trades)
 
         return etf_orders
 
@@ -413,7 +423,7 @@ class Trader:
             total_qty_coup = -int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
 
             if total_qty_coup < self.position['COCONUT_COUPON']:
-                coup_orders.append(Order("COCONUT_COUPON", top_bid_coup, max(-15, total_qty_coup-self.position['COCONUT_COUPON'])))
+                coup_orders.append(Order("COCONUT_COUPON", top_bid_coup, max(-int(20*pct_position), total_qty_coup-self.position['COCONUT_COUPON'])))
 
         #long VOL
         elif imp_coup_bid - top_ask_coup >= 5:
@@ -424,7 +434,7 @@ class Trader:
             total_qty_coup = int(pct_position*(self.POSITION_LIMIT['COCONUT_COUPON']))
 
             if total_qty_coup > self.position['COCONUT_COUPON']:
-                coup_orders.append(Order("COCONUT_COUPON", top_ask_coup, min(15, total_qty_coup-self.position['COCONUT_COUPON'])))
+                coup_orders.append(Order("COCONUT_COUPON", top_ask_coup, min(int(20*pct_position), total_qty_coup-self.position['COCONUT_COUPON'])))
 
         elif top_bid_coup - imp_coup_ask < 0 and self.position["COCONUT_COUPON"] < 0:
             coup_orders.append(Order("COCONUT_COUPON", top_ask_coup, min(-self.position["COCONUT_COUPON"], 30)))
@@ -453,21 +463,21 @@ class Trader:
             total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
 
             if total_qty_coco > self.position['COCONUT']:
-                coup_orders.append(Order("COCONUT", top_ask_coco, min(10, total_qty_coco-self.position['COCONUT'])))
+                coup_orders.append(Order("COCONUT", top_ask_coco, min(int(10*pct_position), total_qty_coco-self.position['COCONUT'])))
 
         elif coco_spread <= -5:
             pct_position = self.option_threshold(-coco_spread)
 
-            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
+            total_qty_coco = -int(pct_position*(self.POSITION_LIMIT['COCONUT']))
 
             if total_qty_coco < self.position['COCONUT']:
-                coup_orders.append(Order("COCONUT", top_bid_coco, min(10, total_qty_coco-self.position['COCONUT'])))
+                coup_orders.append(Order("COCONUT", top_bid_coco, max(-int(10*pct_position), total_qty_coco-self.position['COCONUT'])))
 
         elif coco_spread > 0 and self.position["COCONUT"] < 0:
-            coup_orders.append(Order("COCONUT", top_ask_coco, min(-self.position["COCONUT"], 20)))
+            coup_orders.append(Order("COCONUT", top_ask_coco, min(-self.position["COCONUT"], 15)))
 
         elif coco_spread < 0 and self.position["COCONUT"] > 0:
-            coup_orders.append(Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -20)))
+            coup_orders.append(Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -15)))
 
         return coup_orders
 
@@ -498,6 +508,7 @@ class Trader:
         trader_data = state.traderData
         conversions = 0
         own_trades = state.own_trades
+        market_trades = state.market_trades
         conversion_observation = state.observations.conversionObservations
         orchid_observation = conversion_observation['ORCHIDS']
         etf_components: Dict[Symbol, OrderDepth] = {}
@@ -533,7 +544,7 @@ class Trader:
             elif product == "COCONUT_COUPON":
                 coconuts_coupon_depth = order_depth
 
-        etf_orders = self.compute_etf_orders(state.order_depths, etf_components)
+        etf_orders = self.compute_etf_orders(state.order_depths, etf_components, own_trades, market_trades)
         for prod, ords in etf_orders.items():
             if ords:
                 result[prod] = ords
