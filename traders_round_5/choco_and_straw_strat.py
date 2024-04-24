@@ -106,6 +106,9 @@ class Trader:
         self.orch_ask = 0
         self.orch_bid = 0
         self.arb = None
+        self.orch_avg = 0
+        self.orch_time = 0
+        self.orch_signal = None
 
         # etf
         self.spread_std = 75
@@ -278,8 +281,8 @@ class Trader:
         ask_arb_val = max(ask_pr, self.orch_ask)
 
         arb_val = ask_arb_val-ap-imp-fee
-
-        if self.arb == 'high' or self.arb == 'mid':
+        
+        if self.arb == 'high':
             if apos < 0:
                 if arb_val > 0:
                     convsersions -= bpos
@@ -290,7 +293,7 @@ class Trader:
                 orders.append(Order(product, ask_pr, -pos_lim-apos))
                 self.orch_ask = ask_pr
         
-        elif self.arb == 'low':
+        else:
             cost_buy = ap - fee + imp
             cost_sell = bp - fee - exp
 
@@ -329,20 +332,20 @@ class Trader:
                 if self.straw_signal == 'increasing':
                     self.straw_signal = 'sell_off'
                 elif self.straw_signal != 'decreasing':
-                    if new_straw_avg+0.0175 < self.straw_avg:
+                    if new_straw_avg+0.025 < self.straw_avg:
                         self.straw_signal = 'decreasing'
 
             elif new_straw_avg > self.straw_avg:
                 if self.straw_signal == 'decreasing':
                     self.straw_signal = 'sell_off'
                 elif self.straw_signal != 'increasing':
-                    if new_straw_avg-0.0175 > self.straw_avg:
+                    if new_straw_avg-0.025  > self.straw_avg:
                         self.straw_signal = 'increasing'
 
         self.straw_avg = new_straw_avg
 
         # chocolate
-        if self.choco_time < 20:
+        if self.choco_time < 100:
             self.choco_time += 1
 
         choco_val = self.choco_avg*(self.choco_time-1) + ((choco_buy+choco_sell)/2)
@@ -352,19 +355,19 @@ class Trader:
         logger.print(f'new_avg: {new_choco_avg}')
         logger.print(f'diff: {self.choco_avg-new_choco_avg}')
 
-        if self.choco_time == 20:
+        if self.choco_time == 100:
             if new_choco_avg < self.choco_avg:
                 if self.choco_signal == 'increasing':
                     self.choco_signal = 'sell_off'
                 elif self.choco_signal != 'decreasing':
-                    if new_choco_avg+0.2 < self.choco_avg:
+                    if new_choco_avg+0.05 < self.choco_avg:
                         self.choco_signal = 'decreasing'
 
             elif new_choco_avg > self.choco_avg:
                 if self.choco_signal == 'decreasing':
                     self.choco_signal = 'sell_off'
                 elif self.choco_signal != 'increasing':
-                    if new_choco_avg-0.2 > self.choco_avg:
+                    if new_choco_avg-0.05 > self.choco_avg:
                         self.choco_signal = 'increasing'
 
         self.choco_avg = new_choco_avg
@@ -372,11 +375,11 @@ class Trader:
         return int(synth_bid), int(synth_ask)
         
     def etf_threshold(self, spread):
-        if 0.25*self.spread_std <= spread < 0.5*self.spread_std:
-            return 0.2
-        elif 0.5*self.spread_std <= spread < self.spread_std:
-            return 0.8
-        elif self.spread_std <= spread:
+        if 0.5*self.spread_std <= spread < 0.75*self.spread_std:
+            return 0.25
+        elif 0.75*self.spread_std <= spread < 1.25*self.spread_std:
+            return 0.85
+        elif 1.25*self.spread_std <= spread:
             return 1
         else:
             return 0

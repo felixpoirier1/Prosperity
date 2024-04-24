@@ -122,7 +122,10 @@ class Trader:
         self.coup_spread = 15
         self.coco_spread = 15
         self.count = 0
-        self.day = 4
+        self.day = 5
+        self.coco_avg = 0
+        self.coco_time = 0
+        self.coco_signal = None
 
     def get_deepest_prices(self, order_depth):
         best_sell_pr = sorted(order_depth.sell_orders.items())[-1][0]
@@ -278,8 +281,8 @@ class Trader:
         ask_arb_val = max(ask_pr, self.orch_ask)
 
         arb_val = ask_arb_val-ap-imp-fee
-
-        if self.arb == 'high' or self.arb == 'mid':
+        
+        if self.arb == 'high':
             if apos < 0:
                 if arb_val > 0:
                     convsersions -= bpos
@@ -290,7 +293,7 @@ class Trader:
                 orders.append(Order(product, ask_pr, -pos_lim-apos))
                 self.orch_ask = ask_pr
         
-        elif self.arb == 'low':
+        else:
             cost_buy = ap - fee + imp
             cost_sell = bp - fee - exp
 
@@ -329,42 +332,38 @@ class Trader:
                 if self.straw_signal == 'increasing':
                     self.straw_signal = 'sell_off'
                 elif self.straw_signal != 'decreasing':
-                    if new_straw_avg+0.0175 < self.straw_avg:
+                    if new_straw_avg+0.025 < self.straw_avg:
                         self.straw_signal = 'decreasing'
 
             elif new_straw_avg > self.straw_avg:
                 if self.straw_signal == 'decreasing':
                     self.straw_signal = 'sell_off'
                 elif self.straw_signal != 'increasing':
-                    if new_straw_avg-0.0175 > self.straw_avg:
+                    if new_straw_avg-0.025  > self.straw_avg:
                         self.straw_signal = 'increasing'
 
         self.straw_avg = new_straw_avg
 
         # chocolate
-        if self.choco_time < 20:
+        if self.choco_time < 100:
             self.choco_time += 1
 
         choco_val = self.choco_avg*(self.choco_time-1) + ((choco_buy+choco_sell)/2)
         new_choco_avg = choco_val/self.choco_time
-        
-        logger.print(f'old_avg: {self.choco_avg}')
-        logger.print(f'new_avg: {new_choco_avg}')
-        logger.print(f'diff: {self.choco_avg-new_choco_avg}')
 
-        if self.choco_time == 20:
+        if self.choco_time == 100:
             if new_choco_avg < self.choco_avg:
                 if self.choco_signal == 'increasing':
                     self.choco_signal = 'sell_off'
                 elif self.choco_signal != 'decreasing':
-                    if new_choco_avg+0.2 < self.choco_avg:
+                    if new_choco_avg+0.05 < self.choco_avg:
                         self.choco_signal = 'decreasing'
 
             elif new_choco_avg > self.choco_avg:
                 if self.choco_signal == 'decreasing':
                     self.choco_signal = 'sell_off'
                 elif self.choco_signal != 'increasing':
-                    if new_choco_avg-0.2 > self.choco_avg:
+                    if new_choco_avg-0.05 > self.choco_avg:
                         self.choco_signal = 'increasing'
 
         self.choco_avg = new_choco_avg
@@ -372,11 +371,11 @@ class Trader:
         return int(synth_bid), int(synth_ask)
         
     def etf_threshold(self, spread):
-        if 0.25*self.spread_std <= spread < 0.5*self.spread_std:
-            return 0.2
-        elif 0.5*self.spread_std <= spread < self.spread_std:
-            return 0.8
-        elif self.spread_std <= spread:
+        if 0.5*self.spread_std <= spread < 0.75*self.spread_std:
+            return 0.25
+        elif 0.75*self.spread_std <= spread < 1.25*self.spread_std:
+            return 0.85
+        elif 1.25*self.spread_std <= spread:
             return 1
         else:
             return 0
@@ -522,41 +521,44 @@ class Trader:
         return coup_orders
     
     def compute_coco_orders(self, coconuts_depth: OrderDepth, coconuts_coupon_depth: OrderDepth) -> Tuple[list[Order], list[Order]]:
-        coup_orders = []
+        coco_orders = []
 
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
-        top_bid_coup, top_ask_coup = sorted(coconuts_coupon_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_coupon_depth.sell_orders.items())[0][0]
 
-        mid_coco = (top_bid_coco+top_ask_coco)/2
-        mid_coco_coup = (top_bid_coup+top_ask_coup)/2
+        if self.coco_time < 100:
+            self.coco_time += 1
 
-        imp_coco_mid = self.vanilla_price_BS(mid_coco, 4+(self.count/10000), K=10000, r=0, sigma=0.16, T=250, call_put_flag='P')
+        coco_val = self.coco_avg*(self.coco_time-1) + ((top_bid_coco+top_ask_coco)/2)
+        new_coco_avg = coco_val/self.coco_time
 
-        coco_spread = (mid_coco_coup - imp_coco_mid + 10000) - mid_coco
+        if self.coco_time == 100:
+            if new_coco_avg < self.coco_avg:
+                if self.coco_signal == 'increasing':
+                    self.coco_signal = 'sell_off'
+                elif self.coco_signal != 'decreasing':
+                    if new_coco_avg+0.05 < self.coco_avg:
+                        self.coco_signal = 'decreasing'
 
-        if coco_spread >= 5:
-            pct_position = self.option_threshold(coco_spread)
+            elif new_coco_avg > self.coco_avg:
+                if self.coco_signal == 'decreasing':
+                    self.coco_signal = 'sell_off'
+                elif self.coco_signal != 'increasing':
+                    if new_coco_avg-0.05 > self.coco_avg:
+                        self.coco_signal = 'increasing'
 
-            total_qty_coco = int(pct_position*(self.POSITION_LIMIT['COCONUT']))
+        self.coco_avg = new_coco_avg
 
-            if total_qty_coco > self.position['COCONUT']:
-                coup_orders.append(Order("COCONUT", top_ask_coco, min(int(10*pct_position), total_qty_coco-self.position['COCONUT'])))
+        if self.coco_signal == 'decreasing':
+            coco_orders.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+        elif self.coco_signal == 'increasing':
+            coco_orders.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+        elif self.coco_signal == 'sell_off':
+            if self.position['COCONUT'] > 0:
+                coco_orders.append(Order('COCONUT', top_bid_coco, -self.position['COCONUT']))
+            elif self.position['COCONUT'] < 0:
+                coco_orders.append(Order('COCONUT', top_ask_coco, -self.position['COCONUT']))
 
-        elif coco_spread <= -5:
-            pct_position = self.option_threshold(-coco_spread)
-
-            total_qty_coco = -int(pct_position*(self.POSITION_LIMIT['COCONUT']))
-
-            if total_qty_coco < self.position['COCONUT']:
-                coup_orders.append(Order("COCONUT", top_bid_coco, max(-int(10*pct_position), total_qty_coco-self.position['COCONUT'])))
-
-        elif coco_spread > 0 and self.position["COCONUT"] < 0:
-            coup_orders.append(Order("COCONUT", top_ask_coco, min(-self.position["COCONUT"], 15)))
-
-        elif coco_spread < 0 and self.position["COCONUT"] > 0:
-            coup_orders.append(Order("COCONUT", top_bid_coco, max(-self.position["COCONUT"], -15)))
-
-        return coup_orders
+        return coco_orders
 
     def deserializeJson(self, json_string):
         if json_string == "":
