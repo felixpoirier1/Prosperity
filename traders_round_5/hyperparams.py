@@ -327,7 +327,7 @@ class Trader:
         else:
             self.straw_lst.pop(0)
             self.straw_lst.append((straw_buy+straw_sell)/2)
-            new_straw_avg = sum(self.straw_lst)/100
+            new_straw_avg = sum(self.straw_lst)/250
             
             logger.print(f'Straw old avg: {self.straw_avg}')
             logger.print(f'Straw new avg: {new_straw_avg}')
@@ -535,13 +535,13 @@ class Trader:
 
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
 
-        if len(self.coco_lst) < 100:
+        if len(self.coco_lst) < 50:
             self.coco_lst.append((top_bid_coco+top_ask_coco)/2)
             self.coco_avg = sum(self.coco_lst)/len(self.coco_lst)
         else:
             self.coco_lst.pop(0)
             self.coco_lst.append((top_bid_coco+top_ask_coco)/2)
-            new_coco_avg = sum(self.coco_lst)/100
+            new_coco_avg = sum(self.coco_lst)/50
         
             logger.print(f'Coco old avg: {self.coco_avg}')
             logger.print(f'Coco new avg: {new_coco_avg}')
@@ -551,14 +551,14 @@ class Trader:
                 if self.coco_signal == 'increasing':
                     self.coco_signal = 'sell_off'
                 elif self.coco_signal != 'decreasing':
-                    if new_coco_avg+0.05 < self.coco_avg:
+                    if new_coco_avg+0.1 < self.coco_avg:
                         self.coco_signal = 'decreasing'
 
             elif new_coco_avg > self.coco_avg:
                 if self.coco_signal == 'decreasing':
                     self.coco_signal = 'sell_off'
                 elif self.coco_signal != 'increasing':
-                    if new_coco_avg-0.05 > self.coco_avg:
+                    if new_coco_avg-0.1 > self.coco_avg:
                         self.coco_signal = 'increasing'
                     
             self.coco_avg = new_coco_avg
