@@ -112,10 +112,10 @@ class Trader:
         self.synth_premium = 375
         self.side = None
         self.straw_avg = 0
-        self.straw_time = 0
+        self.straw_lst = []
         self.straw_signal = None
         self.choco_avg = 0
-        self.choco_time = 0
+        self.choco_lst = []
         self.choco_signal = None
 
         # option
@@ -124,7 +124,7 @@ class Trader:
         self.count = 0
         self.day = 5
         self.coco_avg = 0
-        self.coco_time = 0
+        self.coco_lst = []
         self.coco_signal = None
 
     def get_deepest_prices(self, order_depth):
@@ -321,13 +321,18 @@ class Trader:
         synth_ask = (6*straw_sell + 4*choco_sell + rose_sell)+380
 
         # strawberries
-        if self.straw_time < 250:
-            self.straw_time += 1
+        if len(self.straw_lst) < 250:
+            self.straw_lst.append((straw_buy+straw_sell)/2)
+            self.straw_avg = sum(self.straw_lst)/len(self.straw_lst)
+        else:
+            self.straw_lst.pop(0)
+            self.straw_lst.append((straw_buy+straw_sell)/2)
+            new_straw_avg = sum(self.straw_lst)/100
+            
+            logger.print(f'Straw old avg: {self.straw_avg}')
+            logger.print(f'Straw new avg: {new_straw_avg}')
+            logger.print(f'Straw diff: {self.straw_avg-new_straw_avg}')
 
-        straw_val = self.straw_avg*(self.straw_time-1) + ((straw_buy+straw_sell)/2)
-        new_straw_avg = straw_val/self.straw_time
-
-        if self.straw_time == 250:
             if new_straw_avg < self.straw_avg:
                 if self.straw_signal == 'increasing':
                     self.straw_signal = 'sell_off'
@@ -342,16 +347,21 @@ class Trader:
                     if new_straw_avg-0.025  > self.straw_avg:
                         self.straw_signal = 'increasing'
 
-        self.straw_avg = new_straw_avg
+            self.straw_avg = new_straw_avg
 
         # chocolate
-        if self.choco_time < 100:
-            self.choco_time += 1
+        if len(self.choco_lst) < 100:
+            self.choco_lst.append((choco_buy+choco_sell)/2)
+            self.choco_avg = sum(self.choco_lst)/len(self.choco_lst)
+        else:
+            self.choco_lst.pop(0)
+            self.choco_lst.append((choco_buy+choco_sell)/2)
+            new_choco_avg = sum(self.choco_lst)/100
+        
+            logger.print(f'Choco old avg: {self.choco_avg}')
+            logger.print(f'Choco new avg: {new_choco_avg}')
+            logger.print(f'Choco diff: {self.choco_avg-new_choco_avg}')
 
-        choco_val = self.choco_avg*(self.choco_time-1) + ((choco_buy+choco_sell)/2)
-        new_choco_avg = choco_val/self.choco_time
-
-        if self.choco_time == 100:
             if new_choco_avg < self.choco_avg:
                 if self.choco_signal == 'increasing':
                     self.choco_signal = 'sell_off'
@@ -365,8 +375,8 @@ class Trader:
                 elif self.choco_signal != 'increasing':
                     if new_choco_avg-0.05 > self.choco_avg:
                         self.choco_signal = 'increasing'
-
-        self.choco_avg = new_choco_avg
+                    
+            self.choco_avg = new_choco_avg
 
         return int(synth_bid), int(synth_ask)
         
@@ -525,13 +535,18 @@ class Trader:
 
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
 
-        if self.coco_time < 100:
-            self.coco_time += 1
+        if len(self.coco_lst) < 100:
+            self.coco_lst.append((top_bid_coco+top_ask_coco)/2)
+            self.coco_avg = sum(self.coco_lst)/len(self.coco_lst)
+        else:
+            self.coco_lst.pop(0)
+            self.coco_lst.append((top_bid_coco+top_ask_coco)/2)
+            new_coco_avg = sum(self.coco_lst)/100
+        
+            logger.print(f'Coco old avg: {self.coco_avg}')
+            logger.print(f'Coco new avg: {new_coco_avg}')
+            logger.print(f'Coco diff: {self.coco_avg-new_coco_avg}')
 
-        coco_val = self.coco_avg*(self.coco_time-1) + ((top_bid_coco+top_ask_coco)/2)
-        new_coco_avg = coco_val/self.coco_time
-
-        if self.coco_time == 100:
             if new_coco_avg < self.coco_avg:
                 if self.coco_signal == 'increasing':
                     self.coco_signal = 'sell_off'
@@ -545,8 +560,8 @@ class Trader:
                 elif self.coco_signal != 'increasing':
                     if new_coco_avg-0.05 > self.coco_avg:
                         self.coco_signal = 'increasing'
-
-        self.coco_avg = new_coco_avg
+                    
+            self.coco_avg = new_coco_avg
 
         if self.coco_signal == 'decreasing':
             coco_orders.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
