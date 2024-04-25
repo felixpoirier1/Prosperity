@@ -113,6 +113,8 @@ class Trader:
         self.side = None
         self.roses_buy = False
         self.roses_sell = False
+        self.choco_time = 0
+        self.straw_time = 0
 
         # option
         self.coup_spread = 15
@@ -337,6 +339,9 @@ class Trader:
         straw_sell = sorted(order_depths["STRAWBERRIES"].sell_orders.items())[0][0]
         straw_buy = sorted(order_depths["STRAWBERRIES"].buy_orders.items(), reverse=True)[0][0]
 
+        choco_buy_qty = sorted(order_depths["CHOCOLATE"].buy_orders.items(), reverse=True)[0][1]
+        choco_sell_qty = sorted(order_depths["CHOCOLATE"].sell_orders.items())[0][1]
+
         if synth_bid-gift_sell > 0.25*self.spread_std:
             pct_position = self.etf_threshold(synth_bid-gift_sell)
 
@@ -360,12 +365,13 @@ class Trader:
             orders['GIFT_BASKET'].append(Order('GIFT_BASKET', gift_sell, min(2, -self.position['GIFT_BASKET'])))
 
         try:
-            if market_trades['ROSES'][0].buyer == 'Rhianna':
-                self.roses_buy = True
-                self.roses_sell = False
-            elif market_trades['ROSES'][0].seller == 'Rhianna':
-                self.roses_buy = False
-                self.roses_sell = True
+            for i in range(len(market_trades['ROSES'])):
+                if market_trades['ROSES'][i].buyer == 'Rhianna':
+                    self.roses_buy = True
+                    self.roses_sell = False
+                elif market_trades['ROSES'][i].seller == 'Rhianna':
+                    self.roses_buy = False
+                    self.roses_sell = True
         except Exception as e:
             pass
 
@@ -375,24 +381,37 @@ class Trader:
             orders['ROSES'].append(Order('ROSES', roses_buy, -self.POSITION_LIMIT['ROSES']-self.position['ROSES']))
 
         try:
-            if market_trades['CHOCOLATE'][0].buyer == 'Vinnie' and market_trades['CHOCOLATE'][0].seller == 'Remy':
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, min(50, self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'])))
-            elif market_trades['CHOCOLATE'][0].seller == 'Vinnie' and market_trades['CHOCOLATE'][0].buyer == 'Remy':
-                orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, max(-50, -self.POSITION_LIMIT['CHOCOLATE']-self.position['CHOCOLATE'])))
-
+            for i in range(len(market_trades['CHOCOLATE'])):
+                if market_trades['CHOCOLATE'][i].buyer == 'Remy' and market_trades['CHOCOLATE'][i].seller == 'Vinnie':
+                    if market_trades['CHOCOLATE'][i].timestamp != self.choco_time and market_trades['CHOCOLATE'][i].quantity == 8:
+                        if -choco_sell_qty >= 50:
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, 50))
+                        else:
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell, -choco_sell_qty))
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_sell+1, 50+choco_sell_qty))
+                        self.choco_time = market_trades['CHOCOLATE'][i].timestamp
+                elif market_trades['CHOCOLATE'][i].seller == 'Remy' and market_trades['CHOCOLATE'][i].buyer == 'Vinnie':
+                    if market_trades['CHOCOLATE'][i].timestamp != self.choco_time and market_trades['CHOCOLATE'][i].quantity == 8:
+                        if -choco_buy_qty <= -50:
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -50))
+                        else:
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy, -choco_buy_qty))
+                            orders['CHOCOLATE'].append(Order('CHOCOLATE', choco_buy-1, -50+choco_buy_qty))
+                        self.choco_time = market_trades['CHOCOLATE'][i].timestamp
             logger.print(market_trades['CHOCOLATE'])
         except Exception as e:
             pass
 
         try:
-            if market_trades['STRAWBERRIES'][0].buyer == 'Vinnie' and market_trades['STRAWBERRIES'][0].seller == 'Vinnie':
-                pass
-            elif market_trades['STRAWBERRIES'][0].buyer == 'Vinnie' and market_trades['CHOCOLATE'][0].seller == 'Remy':
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, min(70, self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'])))
-            elif market_trades['STRAWBERRIES'][0].seller == 'Vinnie' and market_trades['CHOCOLATE'][0].buyer == 'Remy':
-                orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, max(-70, -self.POSITION_LIMIT['STRAWBERRIES']-self.position['STRAWBERRIES'])))
-
-            logger.print(market_trades['STRAWBERRIES'])
+            for i in range(len(market_trades['STRAWBERRIES'])):
+                if market_trades['STRAWBERRIES'][i].buyer == 'Remy' and market_trades['STRAWBERRIES'][i].seller == 'Vladimir':
+                    if market_trades['STRAWBERRIES'][i].timestamp != self.straw_time:
+                        orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_sell, 70))
+                    self.straw_time = market_trades['STRAWBERRIES'][i].timestamp
+                elif market_trades['STRAWBERRIES'][i].seller == 'Remy' and market_trades['STRAWBERRIES'][i].buyer == 'Vladimir':
+                    if market_trades['STRAWBERRIES'][i].timestamp != self.straw_time:
+                        orders['STRAWBERRIES'].append(Order('STRAWBERRIES', straw_buy, -70))
+                    self.straw_time = market_trades['STRAWBERRIES'][i].timestamp
         except Exception as e:
             pass
 
@@ -480,12 +499,13 @@ class Trader:
         top_bid_coco, top_ask_coco = sorted(coconuts_depth.buy_orders.items(), reverse=True)[0][0], sorted(coconuts_depth.sell_orders.items())[0][0]
 
         try:
-            if market_trades['COCONUT'][0].buyer == 'Raj' and market_trades['COCONUT'][0].seller == 'Rhianna':
-                self.last_coco_trader = 'both'
-            elif market_trades['COCONUT'][0].buyer == 'Raj':
-                coco_orders.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
-            if market_trades['COCONUT'][0].seller == 'Rhianna':
-                coco_orders.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            for i in range(len(market_trades['COCONUT'])):
+                if market_trades['COCONUT'][i].buyer == 'Raj' and market_trades['COCONUT'][0].seller == 'Rhianna':
+                    self.last_coco_trader = 'both'
+                elif market_trades['COCONUT'][i].buyer == 'Raj':
+                    self.last_coco_trader = 'Raj'
+                if market_trades['COCONUT'][i].seller == 'Rhianna':
+                    self.last_coco_trader = 'Rhianna'
         except Exception as e:
             pass    
 
@@ -495,9 +515,9 @@ class Trader:
             elif self.position['COCONUT'] < 0:
                 coco_orders.append(Order('COCONUT', top_ask_coco, -self.position['COCONUT']))
         elif self.last_coco_trader == 'Raj':
-            coco_orders.append(Order('COCONUT', top_ask_coco, self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            coco_orders.append(Order('COCONUT', top_ask_coco, min(self.POSITION_LIMIT['COCONUT']-self.position['COCONUT'], 30)))
         elif self.last_coco_trader == 'Rhianna':
-            coco_orders.append(Order('COCONUT', top_bid_coco, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT']))
+            coco_orders.append(Order('COCONUT', top_bid_coco, max(-30, -self.POSITION_LIMIT['COCONUT']-self.position['COCONUT'])))
 
         return coco_orders
 
