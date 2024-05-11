@@ -1,19 +1,5 @@
-# HOWTO: Run the visualizer
+# IMC Prosperity 
 
-1. Install `node.js` [here](https://nodejs.org/en/download)
+### Rank: 50
 
-2. In the `imc-prosperity-visualizer` directory run :
-
-```bash
-npm install
-npm run dev
-```
-
-3. Open browser at http://localhost:5173/imc-prosperity-2-visualizer/
-
-
-### HOWTO: Run the visualizer via SSH (for Felix)
-
-```bash
-ssh -L 8080:localhost:5173 felix@address -p ...
-```
+### Description: For IMC's trading competition, a group of friends and I, built various trading strategies for various trading products.
